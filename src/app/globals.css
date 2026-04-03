@@ -1,18 +1,68 @@
 @import "tailwindcss";
 
-/* Escuro só com classe .dark no <html>; evita “tudo preto” quando o SO está em dark mode */
+/* Escuro só com classe .dark no <html> */
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f4f4f5;
-  --foreground: #18181b;
+  --background: #f6f7f8;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #1f4b46;
+  --primary-foreground: #f9fafb;
+  --secondary: #f1f3f5;
+  --secondary-foreground: #111827;
+  --muted: #f1f3f5;
+  --muted-foreground: #6b7280;
+  --accent: #dceae7;
+  --accent-foreground: #183a36;
+  --destructive: #8b3a3a;
+  --destructive-foreground: #fafafa;
+  --success: #2f6f57;
+  --success-muted: #e7f4ed;
+  --warning: #8a6a2f;
+  --warning-muted: #f7f0e3;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --input: #e5e7eb;
+  --ring: #1f4b46;
+  --radius: 0.75rem;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-muted: var(--warning-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 body {
@@ -21,20 +71,41 @@ body {
   color-scheme: light;
 }
 
-/* Tema escuro opcional: adicione class="dark" no <html> */
 html.dark {
   color-scheme: dark;
 }
 
 html.dark :root {
-  --background: #09090b;
-  --foreground: #fafafa;
+  --background: #0c0f0e;
+  --foreground: #f3f4f6;
+  --card: #141a18;
+  --card-foreground: #f3f4f6;
+  --popover: #141a18;
+  --popover-foreground: #f3f4f6;
+  --primary: #5a9a8f;
+  --primary-foreground: #0c0f0e;
+  --secondary: #1c2421;
+  --secondary-foreground: #e5e7eb;
+  --muted: #1c2421;
+  --muted-foreground: #9ca3af;
+  --accent: #1e3d38;
+  --accent-foreground: #b7d1cb;
+  --destructive: #c45c5c;
+  --destructive-foreground: #fafafa;
+  --success: #4a9b7a;
+  --success-muted: #142920;
+  --warning: #b89a4a;
+  --warning-muted: #2a2418;
+  --border: #2a3430;
+  --border-strong: #3d4a45;
+  --input: #2a3430;
+  --ring: #5a9a8f;
 }
 
-/* react-day-picker — alinhar ao tema zinc */
+/* react-day-picker */
 .purchase-calendar .rdp-root {
-  --rdp-accent-color: #18181b;
-  --rdp-accent-background-color: #e4e4e7;
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: var(--accent);
   --rdp-day-height: 2.35rem;
   --rdp-day-width: 2.35rem;
   --rdp-day_button-border-radius: 0.5rem;
@@ -42,15 +113,13 @@ html.dark :root {
 }
 
 html.dark .purchase-calendar .rdp-root {
-  --rdp-accent-color: #fafafa;
-  --rdp-accent-background-color: #3f3f46;
-  color: #fafafa;
+  color: var(--foreground);
 }
 
 html.dark .purchase-calendar .rdp-weekday {
-  color: #a1a1aa;
+  color: var(--muted-foreground);
 }
 
 html.dark .purchase-calendar .rdp-day_button {
-  color: #fafafa;
+  color: var(--foreground);
 }

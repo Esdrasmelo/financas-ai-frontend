@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { getApiBase } from "@/lib/api";
 import { formatBRLFromCents, currentCompetencyMonth } from "@/lib/money";
-import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/shared/page-header";
+import { SectionCard } from "@/components/shared/section-card";
+import { DataTable } from "@/components/shared/data-table";
+import { StatusBadge } from "@/components/shared/status-badge";
 
 type Fixed = {
   id: string;
@@ -32,6 +38,8 @@ export default function FixedExpensesPage() {
   const [categoryId, setCategoryId] = useState("");
   const [variableAmount, setVariableAmount] = useState(false);
   const [genMonth, setGenMonth] = useState(currentCompetencyMonth());
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   async function refreshFixed() {
     const base = getApiBase();
@@ -61,6 +69,15 @@ export default function FixedExpensesPage() {
       cancelled = true;
     };
   }, []);
+
+  const filtered = useMemo(() => {
+    let rows = list;
+    if (statusFilter === "active") rows = rows.filter((x) => x.isActive);
+    if (statusFilter === "inactive") rows = rows.filter((x) => !x.isActive);
+    const q = search.trim().toLowerCase();
+    if (q) rows = rows.filter((x) => x.name.toLowerCase().includes(q));
+    return rows;
+  }, [list, search, statusFilter]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -121,21 +138,15 @@ export default function FixedExpensesPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Contas fixas</h1>
-        <p className="text-sm text-zinc-500">
-          Recorrência e geração de lançamentos. Marque &quot;valor variável&quot; para energia, água etc.: na geração, o
-          valor copia o mês anterior (ou a referência informada no primeiro mês).
-        </p>
-      </div>
+    <div className="space-y-6 sm:space-y-8">
+      <PageHeader
+        title="Contas fixas"
+        subtitle="Recorrência, valor fixo ou variável, e geração de lançamentos por competência"
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Nova conta fixa</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={submit}>
+      <SectionCard title="Nova conta fixa" description="Dados principais e recorrência">
+        <form className="space-y-6" onSubmit={submit}>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2">
               <Label>Nome</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} required />
@@ -148,23 +159,11 @@ export default function FixedExpensesPage() {
                 placeholder={variableAmount ? "Última conta ou estimativa" : "199,90"}
                 required
               />
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-muted-foreground">
                 {variableAmount
-                  ? "Usado no 1º mês sem histórico; depois a geração usa o valor do lançamento do mês anterior."
+                  ? "No 1º mês sem histórico usa este valor; depois copia o lançamento do mês anterior."
                   : "Mesmo valor a cada geração."}
               </p>
-            </div>
-            <div className="flex items-start gap-2 sm:col-span-2">
-              <input
-                id="var-amt"
-                type="checkbox"
-                checked={variableAmount}
-                onChange={(e) => setVariableAmount(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border border-zinc-300"
-              />
-              <Label htmlFor="var-amt" className="cursor-pointer font-normal leading-snug">
-                Valor variável todo mês (energia, água, condomínio variável…)
-              </Label>
             </div>
             <div className="space-y-2">
               <Label>Dia vencimento</Label>
@@ -185,61 +184,95 @@ export default function FixedExpensesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="sm:col-span-2 lg:col-span-4 flex flex-col gap-2">
-              <Button type="submit">Salvar</Button>
+          </div>
+          <Separator />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <Switch id="var-amt" checked={variableAmount} onCheckedChange={setVariableAmount} />
+              <Label htmlFor="var-amt" className="cursor-pointer font-normal leading-snug text-foreground">
+                Valor variável todo mês (energia, água, condomínio variável…)
+              </Label>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+            <Button type="submit">Salvar conta fixa</Button>
+          </div>
+        </form>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Gerar lançamentos do mês</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-4">
+      <SectionCard
+        title="Gerar lançamentos do mês"
+        description="Cria entradas mensais para contas ativas conforme as regras de cada uma"
+      >
+        <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-2">
-            <Label>Mês YYYY-MM</Label>
+            <Label>Mês (YYYY-MM)</Label>
             <Input value={genMonth} onChange={(e) => setGenMonth(e.target.value)} className="w-40" />
           </div>
           <Button type="button" variant="secondary" onClick={() => void generate()}>
-            Gerar
+            Gerar lançamentos
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <SectionCard
+        title="Contas cadastradas"
+        action={
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative min-w-[180px] flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar por nome…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="active">Ativas</SelectItem>
+                <SelectItem value="inactive">Inativas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        }
+        contentClassName="pt-0"
+      >
+        <DataTable>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
                 <TableHead>Valor / ref.</TableHead>
                 <TableHead>Tipo</TableHead>
+                <TableHead>Categoria</TableHead>
                 <TableHead>Dia</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead />
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {list.map((x) => (
+              {filtered.map((x) => (
                 <TableRow key={x.id}>
-                  <TableCell>{x.name}</TableCell>
+                  <TableCell className="font-medium">{x.name}</TableCell>
                   <TableCell>{formatBRLFromCents(x.amountCents)}</TableCell>
                   <TableCell>
                     {x.isVariableAmount === true ? (
-                      <Badge variant="secondary">Variável</Badge>
+                      <Badge variant="warning">Variável</Badge>
                     ) : (
-                      <Badge variant="outline">Fixo</Badge>
+                      <Badge variant="secondary">Fixo</Badge>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{cats.find((c) => c.id === x.categoryId)?.name ?? "—"}</Badge>
                   </TableCell>
                   <TableCell>{x.dueDay}</TableCell>
                   <TableCell>
-                    {x.isActive ? <Badge>Ativa</Badge> : <Badge variant="secondary">Inativa</Badge>}
+                    {x.isActive ? <StatusBadge variant="active">Ativa</StatusBadge> : <StatusBadge variant="inactive">Inativa</StatusBadge>}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-right">
                     {x.isActive && (
                       <Button type="button" variant="outline" size="sm" onClick={() => void disable(x.id)}>
                         Desativar
@@ -250,8 +283,8 @@ export default function FixedExpensesPage() {
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </DataTable>
+      </SectionCard>
     </div>
   );
 }
