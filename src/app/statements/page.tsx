@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { getApiBase } from "@/lib/api";
 import { formatDateDdMmYyyy, formatStatementRefDisplay } from "@/lib/date";
-import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatementStatusBadge, type StatementStatus } from "@/components/shared/status-badge";
+import { MoneyValue } from "@/components/shared/money-value";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Statement = {
   id: string;
@@ -21,10 +29,24 @@ type Statement = {
 };
 type CardRow = { id: string; name: string };
 
+type StatementDetail = {
+  statement: { referenceMonth: string; dueDate: string; status: string };
+  totalPendingCents: number;
+  installments: { id: string }[];
+};
+
+function toStatementStatus(s: string): StatementStatus {
+  if (s === "open" || s === "closed" || s === "paid" || s === "overdue") return s;
+  return "open";
+}
+
 export default function StatementsPage() {
   const [cards, setCards] = useState<CardRow[]>([]);
   const [cardId, setCardId] = useState("");
   const [list, setList] = useState<Statement[]>([]);
+  const [sheetId, setSheetId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<StatementDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +77,20 @@ export default function StatementsPage() {
     };
   }, [cardId]);
 
+  const loadStatementSummary = useCallback(async (id: string) => {
+    const base = getApiBase();
+    setDetailLoading(true);
+    setDetail(null);
+    const r = await fetch(`${base}/statements/${id}`);
+    if (!r.ok) {
+      setDetail(null);
+      setDetailLoading(false);
+      return;
+    }
+    setDetail((await r.json()) as StatementDetail);
+    setDetailLoading(false);
+  }, []);
+
   async function markPaid(id: string) {
     const base = getApiBase();
     const r = await fetch(`${base}/statements/${id}/pay`, { method: "PATCH" });
@@ -65,22 +101,22 @@ export default function StatementsPage() {
     toast.success("Marcada como paga");
     const r2 = await fetch(`${base}/credit-cards/${cardId}/statements`);
     if (r2.ok) setList((await r2.json()) as Statement[]);
+    if (sheetId === id) {
+      setSheetId(null);
+    }
   }
 
+  const cardName = cards.find((c) => c.id === cardId)?.name ?? "";
+
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Faturas</h1>
-      </div>
+    <div className="space-y-6 sm:space-y-8">
+      <PageHeader title="Faturas" subtitle="Acompanhe vencimento, status e totais por cartão" />
 
       <Card>
-        <CardHeader>
-          <CardTitle>Filtrar por cartão</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-3 p-5 sm:p-6">
           <Label>Cartão</Label>
           <Select value={cardId} onValueChange={setCardId}>
-            <SelectTrigger className="max-w-sm">
+            <SelectTrigger className="max-w-md">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -94,44 +130,100 @@ export default function StatementsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Ref.</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>{formatStatementRefDisplay(s.referenceMonth)}</TableCell>
-                  <TableCell>{formatDateDdMmYyyy(s.dueDate)}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{s.status}</Badge>
-                  </TableCell>
-                  <TableCell className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/statements/${s.id}`}>Detalhe</Link>
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">
+          {cardName ? `Faturas — ${cardName}` : "Faturas"}
+        </h2>
+        <div className="grid gap-5 sm:grid-cols-1 md:grid-cols-2">
+          {list.map((s) => (
+            <Card key={s.id} className="transition-shadow duration-150 hover:shadow-md">
+              <CardContent className="flex flex-col gap-6 p-6 sm:p-7">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1.5">
+                    <p className="text-base font-semibold tracking-tight text-foreground">
+                      {formatStatementRefDisplay(s.referenceMonth)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Vence {formatDateDdMmYyyy(s.dueDate)}</p>
+                  </div>
+                  <StatementStatusBadge status={toStatementStatus(s.status)} className="shrink-0" />
+                </div>
+                <div className="flex flex-col gap-2.5">
+                  <Button
+                    variant="secondary"
+                    size="default"
+                    className="w-full"
+                    onClick={() => {
+                      setSheetId(s.id);
+                      void loadStatementSummary(s.id);
+                    }}
+                  >
+                    Resumo
+                  </Button>
+                  <Button variant="outline" size="default" className="w-full" asChild>
+                    <Link href={`/statements/${s.id}`}>Detalhe</Link>
+                  </Button>
+                  {s.status !== "paid" && (
+                    <Button size="default" className="w-full" onClick={() => void markPaid(s.id)}>
+                      Marcar paga
                     </Button>
-                    {s.status !== "paid" && (
-                      <Button size="sm" onClick={() => void markPaid(s.id)}>
-                        Pagar
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        {list.length === 0 && (
+          <p className="text-sm text-muted-foreground">Nenhuma fatura para este cartão.</p>
+        )}
+      </section>
+
+      <Sheet
+        open={sheetId !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setSheetId(null);
+            setDetail(null);
+            setDetailLoading(false);
+          }
+        }}
+      >
+        <SheetContent className="flex w-full flex-col gap-4 sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Resumo da fatura</SheetTitle>
+          </SheetHeader>
+          {detailLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-6 w-full" />
+            </div>
+          ) : detail ? (
+            <div className="space-y-4 text-sm">
+              <p className="text-muted-foreground">
+                Referência <span className="font-medium text-foreground">{formatStatementRefDisplay(detail.statement.referenceMonth)}</span>
+              </p>
+              <p className="text-muted-foreground">
+                Vencimento <span className="font-medium text-foreground">{formatDateDdMmYyyy(detail.statement.dueDate)}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Status</span>
+                <StatementStatusBadge status={toStatementStatus(detail.statement.status)} />
+              </div>
+              <p className="text-lg font-semibold text-foreground">
+                Total pendente: <MoneyValue cents={detail.totalPendingCents} />
+              </p>
+              <p className="text-muted-foreground">
+                Itens na fatura: <span className="font-medium text-foreground">{detail.installments.length}</span>
+              </p>
+              <Button asChild className="w-full">
+                <Link href={`/statements/${sheetId}`}>Abrir detalhe completo</Link>
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Não foi possível carregar.</p>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

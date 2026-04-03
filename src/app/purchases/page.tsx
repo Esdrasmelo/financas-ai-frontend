@@ -1,17 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Calendar, Lightbulb, ListOrdered, Sparkles } from "lucide-react";
 import { getApiBase } from "@/lib/api";
 import { formatBRLFromCents } from "@/lib/money";
 import { PurchaseDatePicker } from "@/components/purchase-date-picker";
 import { formatDateDdMmYyyy, formatStatementRefDisplay } from "@/lib/date";
+import { PageHeader } from "@/components/shared/page-header";
+import { SectionCard } from "@/components/shared/section-card";
+import { DataTable } from "@/components/shared/data-table";
+import { EmptyState } from "@/components/shared/empty-state";
 
 type Category = { id: string; name: string };
 type CardRow = { id: string; name: string };
@@ -53,14 +62,7 @@ export default function PurchasesPage() {
   const [cycle, setCycle] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
-
-  const loadPurchases = useCallback(async () => {
-    if (!creditCardId) return;
-    const base = getApiBase();
-    const r = await fetch(`${base}/credit-card-purchases?creditCardId=${encodeURIComponent(creditCardId)}`);
-    if (!r.ok) return;
-    setPurchases((await r.json()) as PurchaseRow[]);
-  }, [creditCardId]);
+  const [purchaseTab, setPurchaseTab] = useState<"all" | "cash" | "installment">("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -85,8 +87,25 @@ export default function PurchasesPage() {
   }, []);
 
   useEffect(() => {
-    void loadPurchases();
-  }, [loadPurchases]);
+    if (!creditCardId) return;
+    let cancelled = false;
+    const base = getApiBase();
+    void fetch(`${base}/credit-card-purchases?creditCardId=${encodeURIComponent(creditCardId)}`).then(async (r) => {
+      if (cancelled || !r.ok) return;
+      setPurchases((await r.json()) as PurchaseRow[]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [creditCardId]);
+
+  async function refreshPurchasesList(cardId: string) {
+    if (!cardId) return;
+    const base = getApiBase();
+    const r = await fetch(`${base}/credit-card-purchases?creditCardId=${encodeURIComponent(cardId)}`);
+    if (!r.ok) return;
+    setPurchases((await r.json()) as PurchaseRow[]);
+  }
 
   const computedInstallmentTotalCents = useMemo(() => {
     if (!installment) return null;
@@ -95,6 +114,12 @@ export default function PurchasesPage() {
     if (!Number.isFinite(n) || n < 1 || !Number.isFinite(pc) || pc <= 0) return null;
     return pc * n;
   }, [installment, totalInst, parcelValue]);
+
+  const filteredPurchases = useMemo(() => {
+    if (purchaseTab === "cash") return purchases.filter((p) => !p.isInstallmentPurchase);
+    if (purchaseTab === "installment") return purchases.filter((p) => p.isInstallmentPurchase);
+    return purchases;
+  }, [purchases, purchaseTab]);
 
   function resetNewPurchaseForm() {
     setEditingId(null);
@@ -242,7 +267,7 @@ export default function PurchasesPage() {
       }
       toast.success("Compra atualizada");
       resetNewPurchaseForm();
-      void loadPurchases();
+      void refreshPurchasesList(creditCardId);
       return;
     }
 
@@ -256,35 +281,22 @@ export default function PurchasesPage() {
       return;
     }
     toast.success("Compra registrada");
-    setDescription("");
-    setTotal("");
-    setParcelValue("");
-    setPreview([]);
-    setCycle(null);
-    setInstallment(false);
-    setTotalInst("12");
-    setCurrentInst("1");
-    setPurchaseDate(new Date().toISOString().slice(0, 10));
-    setCreditCardId(cards[0]?.id ?? "");
+    resetNewPurchaseForm();
+    const defaultCardId = cards[0]?.id ?? "";
+    setCreditCardId(defaultCardId);
     setCategoryId(cats[0]?.id ?? "");
-    void loadPurchases();
+    void refreshPurchasesList(defaultCardId);
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Compras no cartão</h1>
-        <p className="text-sm text-zinc-500">Preview de faturas e parcelas</p>
-      </div>
+    <div className="space-y-6 sm:space-y-8">
+      <PageHeader title="Compras no cartão" subtitle="Cadastro, preview de parcelas e ciclo de fatura" />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{editingId ? "Editar compra" : "Nova compra"}</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <SectionCard title={editingId ? "Editar compra" : "Nova compra"} contentClassName="pt-0">
           <form className="space-y-6" onSubmit={submit}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 <Label>Cartão</Label>
                 <Select value={creditCardId} onValueChange={setCreditCardId} disabled={!!editingId}>
                   <SelectTrigger>
@@ -298,11 +310,9 @@ export default function PurchasesPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {editingId && (
-                  <p className="text-xs text-zinc-500">O cartão não pode ser alterado na edição.</p>
-                )}
+                {editingId ? <p className="text-xs text-muted-foreground">O cartão não pode ser alterado na edição.</p> : null}
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 <Label>Categoria</Label>
                 <Select value={categoryId} onValueChange={setCategoryId}>
                   <SelectTrigger>
@@ -324,16 +334,10 @@ export default function PurchasesPage() {
               {installment ? (
                 <div className="space-y-2">
                   <Label>Valor da parcela R$</Label>
-                  <Input
-                    value={parcelValue}
-                    onChange={(e) => setParcelValue(e.target.value)}
-                    required
-                    inputMode="decimal"
-                  />
+                  <Input value={parcelValue} onChange={(e) => setParcelValue(e.target.value)} required inputMode="decimal" />
                   {computedInstallmentTotalCents != null && (
-                    <p className="text-xs text-zinc-600">
-                      Total da compra:{" "}
-                      <span className="font-medium">{formatBRLFromCents(computedInstallmentTotalCents)}</span>{" "}
+                    <p className="text-xs text-muted-foreground">
+                      Total da compra: <span className="font-medium text-foreground">{formatBRLFromCents(computedInstallmentTotalCents)}</span>{" "}
                       ({totalInst}× parcela)
                     </p>
                   )}
@@ -345,29 +349,26 @@ export default function PurchasesPage() {
                 </div>
               )}
               <PurchaseDatePicker id="purchase-date" value={purchaseDate} onChange={setPurchaseDate} />
-              <div className="flex items-center gap-2 sm:col-span-2">
-                <input
-                  id="inst"
-                  type="checkbox"
-                  checked={installment}
-                  onChange={(e) => setInstallment(e.target.checked)}
-                  className="h-4 w-4 rounded border"
-                />
-                <Label htmlFor="inst">Parcelada</Label>
-              </div>
-              {installment && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Total parcelas</Label>
-                    <Input value={totalInst} onChange={(e) => setTotalInst(e.target.value)} type="number" min={1} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Parcela atual</Label>
-                    <Input value={currentInst} onChange={(e) => setCurrentInst(e.target.value)} type="number" min={1} />
-                  </div>
-                </>
-              )}
             </div>
+            <Separator />
+            <div className="flex items-center gap-3">
+              <Switch id="inst" checked={installment} onCheckedChange={setInstallment} />
+              <Label htmlFor="inst" className="cursor-pointer font-normal">
+                Compra parcelada
+              </Label>
+            </div>
+            {installment && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Total parcelas</Label>
+                  <Input value={totalInst} onChange={(e) => setTotalInst(e.target.value)} type="number" min={1} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Parcela atual</Label>
+                  <Input value={currentInst} onChange={(e) => setCurrentInst(e.target.value)} type="number" min={1} />
+                </div>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="secondary" onClick={() => void runEstimate()}>
                 Em qual fatura cai?
@@ -377,74 +378,144 @@ export default function PurchasesPage() {
               </Button>
               <Button type="submit">{editingId ? "Salvar alterações" : "Registrar"}</Button>
               {editingId && (
-                <Button type="button" variant="outline" onClick={cancelEdit}>
+                <Button type="button" variant="ghost" onClick={cancelEdit}>
                   Cancelar edição
                 </Button>
               )}
             </div>
           </form>
-          {cycle && <p className="mt-4 text-sm text-zinc-600">Fatura (ref. / fechamento / vencimento): {cycle}</p>}
-          {preview.length > 0 && (
-            <ul className="mt-4 list-inside list-disc text-sm space-y-1">
-              {preview.map((p) => (
-                <li key={`${p.installmentNumber}-${p.referenceMonth}`}>
-                  Parc. {p.installmentNumber}: vence{" "}
-                  <span className="font-medium">
-                    {p.dueDate ? formatDateDdMmYyyy(p.dueDate) : formatStatementRefDisplay(p.referenceMonth)}
-                  </span>{" "}
-                  — {formatBRLFromCents(p.amountCents)}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+        </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Compras deste cartão</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!creditCardId ? (
-            <p className="text-sm text-zinc-500">Selecione um cartão acima.</p>
-          ) : purchases.length === 0 ? (
-            <p className="text-sm text-zinc-500">Nenhuma compra neste cartão.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Parcelas</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {purchases.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>{formatDateDdMmYyyy(p.purchaseDate)}</TableCell>
-                    <TableCell>{p.description}</TableCell>
-                    <TableCell>{cats.find((c) => c.id === p.categoryId)?.name ?? "—"}</TableCell>
-                    <TableCell>{formatBRLFromCents(p.totalAmountCents)}</TableCell>
-                    <TableCell>
-                      {p.isInstallmentPurchase
-                        ? `${p.currentInstallment}/${p.totalInstallments}`
-                        : "À vista"}
-                    </TableCell>
-                    <TableCell>
-                      <Button type="button" variant="outline" size="sm" onClick={() => void beginEdit(p.id)}>
-                        Editar
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+        <Card className="border-primary/15 bg-gradient-to-b from-card to-muted/25 shadow-sm">
+          <CardContent className="space-y-6 p-6 sm:p-7">
+            <div className="flex items-start gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Sparkles className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="min-w-0 space-y-1">
+                <h3 className="text-base font-semibold tracking-tight text-foreground">Preview</h3>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  Confira o ciclo da fatura e o calendário de parcelas antes de confirmar a compra.
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Calendar className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                Ciclo da fatura
+              </div>
+              {cycle ? (
+                <p className="rounded-xl border border-border bg-card px-4 py-3.5 text-sm leading-relaxed text-foreground shadow-sm">
+                  {cycle}
+                </p>
+              ) : (
+                <div className="flex gap-3 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3.5 text-sm leading-relaxed text-muted-foreground">
+                  <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  <span>
+                    Clique em <span className="font-medium text-foreground">Em qual fatura cai?</span> para ver referência de
+                    mês, data de fechamento e vencimento estimado.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <ListOrdered className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                Parcelas previstas
+              </div>
+              {preview.length > 0 ? (
+                <ul className="space-y-2.5">
+                  {preview.map((p) => (
+                    <li
+                      key={`${p.installmentNumber}-${p.referenceMonth}`}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm shadow-sm"
+                    >
+                      <span className="text-muted-foreground">
+                        Parcela {p.installmentNumber}
+                        <span className="mx-1.5 text-muted-foreground/60">·</span>
+                        {p.dueDate ? formatDateDdMmYyyy(p.dueDate) : formatStatementRefDisplay(p.referenceMonth)}
+                      </span>
+                      <span className="font-semibold tabular-nums text-foreground">{formatBRLFromCents(p.amountCents)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="flex gap-3 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3.5 text-sm leading-relaxed text-muted-foreground">
+                  <ListOrdered className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span>
+                    Use <span className="font-medium text-foreground">Preview parcelas</span> para simular como o valor se
+                    distribui nas competências seguintes.
+                  </span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <SectionCard title="Compras deste cartão" contentClassName="pt-0">
+        {!creditCardId ? (
+          <EmptyState title="Selecione um cartão" description="Escolha o cartão no formulário acima." />
+        ) : (
+          <Tabs value={purchaseTab} onValueChange={(v) => setPurchaseTab(v as typeof purchaseTab)}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="all">Todas</TabsTrigger>
+              <TabsTrigger value="cash">À vista</TabsTrigger>
+              <TabsTrigger value="installment">Parceladas</TabsTrigger>
+            </TabsList>
+            <TabsContent value={purchaseTab} className="mt-0">
+              {filteredPurchases.length === 0 ? (
+                <EmptyState title="Nenhuma compra" description="Nada neste filtro para o cartão selecionado." />
+              ) : (
+                <DataTable>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead className="text-right">Valor</TableHead>
+                        <TableHead>Parcelas</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredPurchases.map((p) => (
+                        <TableRow key={p.id}>
+                          <TableCell>{formatDateDdMmYyyy(p.purchaseDate)}</TableCell>
+                          <TableCell className="font-medium">{p.description}</TableCell>
+                          <TableCell>{cats.find((c) => c.id === p.categoryId)?.name ?? "—"}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatBRLFromCents(p.totalAmountCents)}</TableCell>
+                          <TableCell>
+                            {p.isInstallmentPurchase ? (
+                              <Badge variant="secondary">
+                                {p.currentInstallment}/{p.totalInstallments}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline">À vista</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button type="button" variant="outline" size="sm" onClick={() => void beginEdit(p.id)}>
+                              Editar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </DataTable>
+              )}
+            </TabsContent>
+          </Tabs>
+        )}
+      </SectionCard>
     </div>
   );
 }

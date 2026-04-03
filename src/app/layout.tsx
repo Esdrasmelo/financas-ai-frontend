@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
 import { AppToaster } from "@/components/providers/app-toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -27,11 +28,13 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-zinc-100 font-sans text-zinc-900">
-        <AppShell>{children}</AppShell>
+      <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
+        <TooltipProvider delayDuration={200}>
+          <AppShell>{children}</AppShell>
+        </TooltipProvider>
         <AppToaster />
       </body>
     </html>
