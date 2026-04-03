@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +37,7 @@ type Overview = {
 };
 
 export default function CreditCardsPage() {
+  const router = useRouter();
   const [list, setList] = useState<CardRow[]>([]);
   const [overview, setOverview] = useState<Overview[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -139,7 +142,12 @@ export default function CreditCardsPage() {
         ) : (
           <div className="grid gap-5 sm:grid-cols-1 lg:grid-cols-2">
             {overview.map((c) => (
-              <Card key={c.creditCardId}>
+              <Link
+                key={c.creditCardId}
+                href={`/credit-cards/${c.creditCardId}`}
+                className="block rounded-2xl transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Card className="h-full">
                 <CardContent className="space-y-6 p-6 sm:p-8">
                   <div className="flex items-start gap-4">
                     <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -177,7 +185,8 @@ export default function CreditCardsPage() {
                     </p>
                   )}
                 </CardContent>
-              </Card>
+                </Card>
+              </Link>
             ))}
           </div>
         )}
@@ -196,7 +205,11 @@ export default function CreditCardsPage() {
             </TableHeader>
             <TableBody>
               {list.map((c) => (
-                <TableRow key={c.id}>
+                <TableRow
+                  key={c.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => router.push(`/credit-cards/${c.id}`)}
+                >
                   <TableCell className="font-medium">{c.name}</TableCell>
                   <TableCell>{c.closingDay}</TableCell>
                   <TableCell>{c.dueDay}</TableCell>
