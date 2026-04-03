@@ -12,6 +12,7 @@ function navLinkActive(href: string, pathname: string) {
 
 const links = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/planning", label: "Planejamento" },
   { href: "/categories", label: "Categorias" },
   { href: "/fixed-expenses", label: "Contas fixas" },
   { href: "/entries", label: "Lançamentos" },

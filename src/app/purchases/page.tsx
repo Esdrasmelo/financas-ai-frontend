@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,7 +47,18 @@ function isoDateToYmd(iso: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-export default function PurchasesPage() {
+/** Data sugerida: não ultrapassa hoje nem o fim do período da fatura (UTC). */
+function suggestedPurchaseYmdFromStatement(periodEndIso: string): string {
+  const end = new Date(periodEndIso);
+  const now = new Date();
+  const endUtc = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  const nowUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const chosen = Math.min(endUtc, nowUtc);
+  return new Date(chosen).toISOString().slice(0, 10);
+}
+
+function PurchasesPageInner() {
+  const searchParams = useSearchParams();
   const [cats, setCats] = useState<Category[]>([]);
   const [cards, setCards] = useState<CardRow[]>([]);
   const [creditCardId, setCreditCardId] = useState("");
@@ -63,6 +75,7 @@ export default function PurchasesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
   const [purchaseTab, setPurchaseTab] = useState<"all" | "cash" | "installment">("all");
+  const [statementHint, setStatementHint] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +98,34 @@ export default function PurchasesPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const cc = searchParams.get("creditCardId");
+    if (!cc || editingId || cards.length === 0) return;
+    if (cards.some((c) => c.id === cc)) setCreditCardId(cc);
+  }, [searchParams, editingId, cards]);
+
+  useEffect(() => {
+    const statementId = searchParams.get("statementId");
+    if (!statementId || editingId) return;
+    let cancelled = false;
+    const base = getApiBase();
+    void (async () => {
+      const r = await fetch(`${base}/statements/${statementId}`);
+      if (cancelled || !r.ok) return;
+      const detail = (await r.json()) as {
+        statement: { creditCardId: string; periodEnd: string; referenceMonth: string };
+      };
+      setCreditCardId(detail.statement.creditCardId);
+      setPurchaseDate(suggestedPurchaseYmdFromStatement(detail.statement.periodEnd));
+      setStatementHint(
+        `Compra sugerida para a fatura ${formatStatementRefDisplay(detail.statement.referenceMonth)}. A data segue o ciclo do cartão.`,
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, editingId]);
 
   useEffect(() => {
     if (!creditCardId) return;
@@ -295,6 +336,9 @@ export default function PurchasesPage() {
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <SectionCard title={editingId ? "Editar compra" : "Nova compra"} contentClassName="pt-0">
           <form className="space-y-6" onSubmit={submit}>
+            {statementHint && !editingId ? (
+              <p className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">{statementHint}</p>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label>Cartão</Label>
@@ -517,5 +561,20 @@ export default function PurchasesPage() {
         )}
       </SectionCard>
     </div>
+  );
+}
+
+export default function PurchasesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-6 sm:space-y-8">
+          <PageHeader title="Compras no cartão" subtitle="Cadastro, preview de parcelas e ciclo de fatura" />
+          <p className="text-sm text-muted-foreground">Carregando…</p>
+        </div>
+      }
+    >
+      <PurchasesPageInner />
+    </Suspense>
   );
 }
