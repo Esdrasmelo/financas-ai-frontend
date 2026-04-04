@@ -20,7 +20,7 @@ import { StatementStatusBadge, type StatementStatus } from "@/components/shared/
 import { DataTable } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { CategoryDonutTooltip } from "@/components/dashboard/category-donut-tooltip";
-import { CHART_SERIES_COLORS } from "@/lib/chart-theme";
+import { chartSeriesColorsFromTheme } from "@/lib/chart-theme";
 import { EmptyState } from "@/components/shared/empty-state";
 
 type Detail = {
@@ -78,6 +78,7 @@ export default function StatementDetailPage() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creditCardName, setCreditCardName] = useState<string | null>(null);
+  const [creditCardThemeColor, setCreditCardThemeColor] = useState<string | null>(null);
   const [cards, setCards] = useState<CreditCardOption[]>([]);
   const [cardSwitchLoading, setCardSwitchLoading] = useState(false);
 
@@ -120,6 +121,7 @@ export default function StatementDetailPage() {
     const creditCardId = data?.statement.creditCardId;
     if (!creditCardId) {
       setCreditCardName(null);
+      setCreditCardThemeColor(null);
       return;
     }
     let cancelled = false;
@@ -127,8 +129,11 @@ export default function StatementDetailPage() {
     void (async () => {
       const response = await fetch(`${base}/credit-cards/${creditCardId}`);
       if (cancelled || !response.ok) return;
-      const card = (await response.json()) as { name: string };
-      if (!cancelled) setCreditCardName(card.name);
+      const card = (await response.json()) as { name: string; themeColor: string | null };
+      if (!cancelled) {
+        setCreditCardName(card.name);
+        setCreditCardThemeColor(card.themeColor ?? null);
+      }
     })();
     return () => {
       cancelled = true;
@@ -164,6 +169,11 @@ export default function StatementDetailPage() {
     if (!data?.categoryBreakdown.length) return [];
     return data.categoryBreakdown.map((slice) => ({ name: slice.categoryName, value: slice.amountCents }));
   }, [data]);
+
+  const chartColors = useMemo(
+    () => chartSeriesColorsFromTheme(creditCardThemeColor, chartData.length),
+    [creditCardThemeColor, chartData.length],
+  );
 
   const monthLabel = data ? `fatura ${formatStatementRefDisplay(data.statement.referenceMonth)}` : "";
 
@@ -320,7 +330,7 @@ export default function StatementDetailPage() {
                       {chartData.map((_, i) => (
                         <Cell
                           key={i}
-                          fill={CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length]}
+                          fill={chartColors[i] ?? chartColors[0]}
                           stroke="var(--card)"
                           strokeWidth={2}
                         />
@@ -338,7 +348,7 @@ export default function StatementDetailPage() {
                     <span className="flex items-center gap-2">
                       <span
                         className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length] }}
+                        style={{ backgroundColor: chartColors[i] ?? chartColors[0] }}
                       />
                       <span className="text-foreground">{c.categoryName}</span>
                     </span>
