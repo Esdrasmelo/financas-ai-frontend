@@ -20,6 +20,7 @@ import { CHART_SERIES_COLORS } from "@/lib/chart-theme";
 import { CategoryDonutTooltip } from "@/components/dashboard/category-donut-tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DataTable } from "@/components/shared/data-table";
+import { CompetencyViewTip } from "@/components/shared/competency-view-tip";
 type CardDetail = {
   id: string;
   name: string;
@@ -36,9 +37,9 @@ type Analytics = {
 };
 
 function monthShortLabel(ym: string) {
-  const [y, m] = ym.split("-").map(Number);
-  const d = new Date(Date.UTC(y, m - 1, 1));
-  return d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+  const [year, monthNum] = ym.split("-").map(Number);
+  const labelDate = new Date(Date.UTC(year, monthNum - 1, 1));
+  return labelDate.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 }
 
 function BarTip({
@@ -74,14 +75,14 @@ export default function CreditCardDetailPage() {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const r = await fetch(`${base}/credit-cards/${id}`);
+      const response = await fetch(`${base}/credit-cards/${id}`);
       if (cancelled) return;
-      if (!r.ok) {
+      if (!response.ok) {
         setErr("Cartão não encontrado");
         setCard(null);
         return;
       }
-      setCard((await r.json()) as CardDetail);
+      setCard((await response.json()) as CardDetail);
       setErr(null);
     })();
     return () => {
@@ -92,21 +93,21 @@ export default function CreditCardDetailPage() {
   useEffect(() => {
     let cancelled = false;
     const base = getApiBase();
-    const q = new URLSearchParams({
+    const analyticsQuery = new URLSearchParams({
       fromCompetencyMonth: fromMonth,
       toCompetencyMonth: toMonth,
       view,
     });
     void (async () => {
       setLoading(true);
-      const r = await fetch(`${base}/credit-cards/${id}/analytics?${q}`);
+      const response = await fetch(`${base}/credit-cards/${id}/analytics?${analyticsQuery}`);
       if (cancelled) return;
-      if (!r.ok) {
+      if (!response.ok) {
         setAnalytics(null);
         setLoading(false);
         return;
       }
-      setAnalytics((await r.json()) as Analytics);
+      setAnalytics((await response.json()) as Analytics);
       setLoading(false);
     })();
     return () => {
@@ -124,10 +125,13 @@ export default function CreditCardDetailPage() {
 
   const pieData = useMemo(() => {
     if (!analytics?.categories.length) return [];
-    return analytics.categories.map((c) => ({ name: c.categoryName, value: c.amountCents }));
+    return analytics.categories.map((slice) => ({ name: slice.categoryName, value: slice.amountCents }));
   }, [analytics]);
 
-  const pieTotal = useMemo(() => analytics?.categories.reduce((s, c) => s + c.amountCents, 0) ?? 0, [analytics]);
+  const pieTotal = useMemo(
+    () => analytics?.categories.reduce((sum, slice) => sum + slice.amountCents, 0) ?? 0,
+    [analytics],
+  );
 
   const viewLabel = view === "payment" ? "por competência (pagamento)" : "por data da compra";
 
@@ -165,22 +169,25 @@ export default function CreditCardDetailPage() {
         }
       />
 
-      <Card>
-        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="space-y-2">
-            <Label htmlFor="from-m">De (YYYY-MM)</Label>
-            <Input id="from-m" value={fromMonth} onChange={(e) => setFromMonth(e.target.value)} className="w-40" />
+      <Card className="mt-1">
+        <CardContent className="flex flex-col gap-4 p-5 pt-6 sm:p-6 sm:pt-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="from-m">De (YYYY-MM)</Label>
+              <Input id="from-m" value={fromMonth} onChange={(e) => setFromMonth(e.target.value)} className="w-40" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="to-m">Até (YYYY-MM)</Label>
+              <Input id="to-m" value={toMonth} onChange={(e) => setToMonth(e.target.value)} className="w-40" />
+            </div>
+            <Tabs value={view} onValueChange={(v) => setView(v as "payment" | "occurrence")}>
+              <TabsList>
+                <TabsTrigger value="payment">Pagamento</TabsTrigger>
+                <TabsTrigger value="occurrence">Ocorrência</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="to-m">Até (YYYY-MM)</Label>
-            <Input id="to-m" value={toMonth} onChange={(e) => setToMonth(e.target.value)} className="w-40" />
-          </div>
-          <Tabs value={view} onValueChange={(v) => setView(v as "payment" | "occurrence")}>
-            <TabsList>
-              <TabsTrigger value="payment">Pagamento</TabsTrigger>
-              <TabsTrigger value="occurrence">Ocorrência</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <CompetencyViewTip />
         </CardContent>
       </Card>
 

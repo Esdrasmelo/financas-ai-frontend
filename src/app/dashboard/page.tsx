@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { PageHeader } from "@/components/shared/page-header";
+import { CompetencyViewTip } from "@/components/shared/competency-view-tip";
 import { StatCard, StatCardCompact } from "@/components/shared/stat-card";
 import { SectionCard } from "@/components/shared/section-card";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -95,17 +96,17 @@ type UpcomingStatement = {
 };
 
 function monthShortLabel(ym: string) {
-  const [y, m] = ym.split("-").map(Number);
-  const d = new Date(Date.UTC(y, m - 1, 1));
-  return d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+  const [year, monthNum] = ym.split("-").map(Number);
+  const labelDate = new Date(Date.UTC(year, monthNum - 1, 1));
+  return labelDate.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 }
 
 function aggregateTopCategories(rows: CatRow[], topN: number): { name: string; value: number }[] {
   const sorted = [...rows].sort((a, b) => b.amountCents - a.amountCents);
   const head = sorted.slice(0, topN);
   const tail = sorted.slice(topN);
-  const otherCents = tail.reduce((s, r) => s + r.amountCents, 0);
-  const out = head.map((r) => ({ name: r.categoryName, value: r.amountCents }));
+  const otherCents = tail.reduce((sum, row) => sum + row.amountCents, 0);
+  const out = head.map((row) => ({ name: row.categoryName, value: row.amountCents }));
   if (otherCents > 0) out.push({ name: "Outros", value: otherCents });
   return out;
 }
@@ -131,60 +132,62 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     const base = getApiBase();
-    const q = new URLSearchParams({ competencyMonth: month, view });
+    const dashboardQuery = new URLSearchParams({ competencyMonth: month, view });
     const months = competencyMonthsEndingAt(month, 6);
 
     void (async () => {
       setLoading(true);
       try {
         const trendUrls = months.map(
-          (m) => `${base}/dashboard/monthly-summary?competencyMonth=${m}&view=${view}`,
+          (monthKey) => `${base}/dashboard/monthly-summary?competencyMonth=${monthKey}&view=${view}`,
         );
         const results = await Promise.all([
-          fetch(`${base}/dashboard/kpis?${q}`).then(async (r) => {
-            if (!r.ok) throw new Error(await r.text());
-            return r.json() as Promise<Kpis>;
+          fetch(`${base}/dashboard/kpis?${dashboardQuery}`).then(async (response) => {
+            if (!response.ok) throw new Error(await response.text());
+            return response.json() as Promise<Kpis>;
           }),
-          fetch(`${base}/dashboard/category-breakdown?${q}`).then(async (r) => {
-            if (!r.ok) throw new Error(await r.text());
-            return r.json() as Promise<CatRow[]>;
+          fetch(`${base}/dashboard/category-breakdown?${dashboardQuery}`).then(async (response) => {
+            if (!response.ok) throw new Error(await response.text());
+            return response.json() as Promise<CatRow[]>;
           }),
-          fetch(`${base}/dashboard/monthly-summary?${q}`).then(async (r) => {
-            if (!r.ok) throw new Error(await r.text());
-            return r.json() as Promise<MonthlySummary>;
+          fetch(`${base}/dashboard/monthly-summary?${dashboardQuery}`).then(async (response) => {
+            if (!response.ok) throw new Error(await response.text());
+            return response.json() as Promise<MonthlySummary>;
           }),
           ...trendUrls.map((url) =>
-            fetch(url).then(async (r) => {
-              if (!r.ok) throw new Error(await r.text());
-              return r.json() as Promise<MonthlySummary>;
+            fetch(url).then(async (response) => {
+              if (!response.ok) throw new Error(await response.text());
+              return response.json() as Promise<MonthlySummary>;
             }),
           ),
-          fetch(`${base}/dashboard/credit-cards-overview`).then(async (r) => {
-            if (!r.ok) throw new Error(await r.text());
-            return r.json() as Promise<CreditCardOverview[]>;
+          fetch(`${base}/dashboard/credit-cards-overview`).then(async (response) => {
+            if (!response.ok) throw new Error(await response.text());
+            return response.json() as Promise<CreditCardOverview[]>;
           }),
-          fetch(`${base}/dashboard/future-commitments?fromCompetencyMonth=${encodeURIComponent(month)}`).then(async (r) => {
-            if (!r.ok) throw new Error(await r.text());
-            return r.json() as Promise<FutureCommitments>;
+          fetch(
+            `${base}/dashboard/future-commitments?fromCompetencyMonth=${encodeURIComponent(month)}`,
+          ).then(async (response) => {
+            if (!response.ok) throw new Error(await response.text());
+            return response.json() as Promise<FutureCommitments>;
           }),
-          fetch(`${base}/dashboard/upcoming-statements?limit=6`).then(async (r) => {
-            if (!r.ok) throw new Error(await r.text());
-            return r.json() as Promise<UpcomingStatement[]>;
+          fetch(`${base}/dashboard/upcoming-statements?limit=6`).then(async (response) => {
+            if (!response.ok) throw new Error(await response.text());
+            return response.json() as Promise<UpcomingStatement[]>;
           }),
         ]);
 
-        const k = results[0] as Kpis;
-        const c = results[1] as CatRow[];
-        const mc = results[2] as MonthlySummary;
+        const kpisPayload = results[0] as Kpis;
+        const categoriesPayload = results[1] as CatRow[];
+        const monthlyPayload = results[2] as MonthlySummary;
         const trendOnly = results.slice(3, 9) as MonthlySummary[];
-        const cc = results[9] as CreditCardOverview[];
-        const comm = results[10] as FutureCommitments;
-        const upc = results[11] as UpcomingStatement[];
+        const creditCardsPayload = results[9] as CreditCardOverview[];
+        const commitmentsPayload = results[10] as FutureCommitments;
+        const upcomingStatementsPayload = results[11] as UpcomingStatement[];
 
         if (cancelled) return;
-        setKpis(k);
-        setCats(c);
-        setMonthlyCurrent(mc);
+        setKpis(kpisPayload);
+        setCats(categoriesPayload);
+        setMonthlyCurrent(monthlyPayload);
         setTrend(
           trendOnly.map((row) => ({
             month: row.competencyMonth,
@@ -192,13 +195,13 @@ export default function DashboardPage() {
             label: monthShortLabel(row.competencyMonth),
           })),
         );
-        setCcOverview(cc);
-        setCommitments(comm);
-        setUpcoming(upc);
+        setCcOverview(creditCardsPayload);
+        setCommitments(commitmentsPayload);
+        setUpcoming(upcomingStatementsPayload);
         setErr(null);
-      } catch (e) {
+      } catch (error) {
         if (cancelled) return;
-        setErr(e instanceof Error ? e.message : "Falha ao carregar");
+        setErr(error instanceof Error ? error.message : "Falha ao carregar");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -209,7 +212,10 @@ export default function DashboardPage() {
   }, [month, view]);
 
   const chartData = useMemo(() => aggregateTopCategories(cats, TOP_CATEGORIES), [cats]);
-  const chartTotalCents = useMemo(() => chartData.reduce((s, d) => s + d.value, 0), [chartData]);
+  const chartTotalCents = useMemo(
+    () => chartData.reduce((sum, slice) => sum + slice.value, 0),
+    [chartData],
+  );
   const viewLabel = view === "occurrence" ? "por ocorrência" : "por pagamento";
   const monthLabel = `${month} (${viewLabel})`;
 
@@ -240,13 +246,13 @@ export default function DashboardPage() {
       <PageHeader
         title="Dashboard financeiro"
         subtitle="Visão consolidada da competência e tendência recente"
-      >
+      />
+
+      <div className="flex max-w-2xl flex-col gap-3">
         <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-2">
-            <Label htmlFor="month" className="text-xs uppercase tracking-wide text-muted-foreground">
-              Mês (YYYY-MM)
-            </Label>
-            <Input id="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-36" />
+            <Label htmlFor="dash-month">Mês (YYYY-MM)</Label>
+            <Input id="dash-month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-40" />
           </div>
           <Tabs value={view} onValueChange={(v) => setView(v as "occurrence" | "payment")}>
             <TabsList>
@@ -255,7 +261,8 @@ export default function DashboardPage() {
             </TabsList>
           </Tabs>
         </div>
-      </PageHeader>
+        <CompetencyViewTip />
+      </div>
 
       {err && (
         <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -513,18 +520,20 @@ export default function DashboardPage() {
                   <p className="text-sm text-muted-foreground">Nenhuma fatura futura pendente.</p>
                 ) : (
                   <ul className="space-y-3">
-                    {upcoming.map((u) => (
+                    {upcoming.map((upcomingStatement) => (
                       <li
-                        key={u.statementId}
+                        key={upcomingStatement.statementId}
                         className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm"
                       >
                         <div className="min-w-0">
-                          <p className="font-medium text-foreground">{u.creditCardName}</p>
-                          <p className="text-xs text-muted-foreground">Vence {formatDateDdMmYyyy(u.dueDate)}</p>
+                          <p className="font-medium text-foreground">{upcomingStatement.creditCardName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Vence {formatDateDdMmYyyy(upcomingStatement.dueDate)}
+                          </p>
                         </div>
                         <div className="flex flex-col items-end gap-1">
-                          <MoneyValue cents={u.totalPendingCents} className="text-sm" />
-                          <StatementStatusBadge status={statementStatus(u.status)} />
+                          <MoneyValue cents={upcomingStatement.totalPendingCents} className="text-sm" />
+                          <StatementStatusBadge status={statementStatus(upcomingStatement.status)} />
                         </div>
                       </li>
                     ))}

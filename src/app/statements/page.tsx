@@ -52,11 +52,11 @@ export default function StatementsPage() {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const r = await fetch(`${base}/credit-cards`);
-      if (cancelled || !r.ok) return;
-      const kl = (await r.json()) as CardRow[];
-      setCards(kl);
-      setCardId((p) => p || (kl[0]?.id ?? ""));
+      const response = await fetch(`${base}/credit-cards`);
+      if (cancelled || !response.ok) return;
+      const cardsJson = (await response.json()) as CardRow[];
+      setCards(cardsJson);
+      setCardId((prev) => prev || (cardsJson[0]?.id ?? ""));
     })();
     return () => {
       cancelled = true;
@@ -68,9 +68,9 @@ export default function StatementsPage() {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const r = await fetch(`${base}/credit-cards/${cardId}/statements`);
-      if (cancelled || !r.ok) return;
-      setList((await r.json()) as Statement[]);
+      const response = await fetch(`${base}/credit-cards/${cardId}/statements`);
+      if (cancelled || !response.ok) return;
+      setList((await response.json()) as Statement[]);
     })();
     return () => {
       cancelled = true;
@@ -81,32 +81,32 @@ export default function StatementsPage() {
     const base = getApiBase();
     setDetailLoading(true);
     setDetail(null);
-    const r = await fetch(`${base}/statements/${id}`);
-    if (!r.ok) {
+    const response = await fetch(`${base}/statements/${id}`);
+    if (!response.ok) {
       setDetail(null);
       setDetailLoading(false);
       return;
     }
-    setDetail((await r.json()) as StatementDetail);
+    setDetail((await response.json()) as StatementDetail);
     setDetailLoading(false);
   }, []);
 
   async function markPaid(id: string) {
     const base = getApiBase();
-    const r = await fetch(`${base}/statements/${id}/pay`, { method: "PATCH" });
-    if (!r.ok) {
+    const payResponse = await fetch(`${base}/statements/${id}/pay`, { method: "PATCH" });
+    if (!payResponse.ok) {
       toast.error("Erro");
       return;
     }
     toast.success("Marcada como paga");
-    const r2 = await fetch(`${base}/credit-cards/${cardId}/statements`);
-    if (r2.ok) setList((await r2.json()) as Statement[]);
+    const statementsResponse = await fetch(`${base}/credit-cards/${cardId}/statements`);
+    if (statementsResponse.ok) setList((await statementsResponse.json()) as Statement[]);
     if (sheetId === id) {
       setSheetId(null);
     }
   }
 
-  const cardName = cards.find((c) => c.id === cardId)?.name ?? "";
+  const cardName = cards.find((card) => card.id === cardId)?.name ?? "";
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -120,9 +120,9 @@ export default function StatementsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {cards.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
+              {cards.map((card) => (
+                <SelectItem key={card.id} value={card.id}>
+                  {card.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -134,18 +134,18 @@ export default function StatementsPage() {
         <h2 className="text-lg font-semibold tracking-tight text-foreground">
           {cardName ? `Faturas — ${cardName}` : "Faturas"}
         </h2>
-        <div className="grid gap-5 sm:grid-cols-1 md:grid-cols-2">
-          {list.map((s) => (
-            <Card key={s.id} className="transition-shadow duration-150 hover:shadow-md">
-              <CardContent className="flex flex-col gap-6 p-6 sm:p-7">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {list.map((statement) => (
+            <Card key={statement.id} className="transition-shadow duration-150 hover:shadow-md">
+              <CardContent className="flex flex-col gap-4 p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 space-y-1.5">
                     <p className="text-base font-semibold tracking-tight text-foreground">
-                      {formatStatementRefDisplay(s.referenceMonth)}
+                      {formatStatementRefDisplay(statement.referenceMonth)}
                     </p>
-                    <p className="text-sm text-muted-foreground">Vence {formatDateDdMmYyyy(s.dueDate)}</p>
+                    <p className="text-sm text-muted-foreground">Vence {formatDateDdMmYyyy(statement.dueDate)}</p>
                   </div>
-                  <StatementStatusBadge status={toStatementStatus(s.status)} className="shrink-0" />
+                  <StatementStatusBadge status={toStatementStatus(statement.status)} className="shrink-0" />
                 </div>
                 <div className="flex flex-col gap-2.5">
                   <Button
@@ -153,17 +153,17 @@ export default function StatementsPage() {
                     size="default"
                     className="w-full"
                     onClick={() => {
-                      setSheetId(s.id);
-                      void loadStatementSummary(s.id);
+                      setSheetId(statement.id);
+                      void loadStatementSummary(statement.id);
                     }}
                   >
                     Resumo
                   </Button>
                   <Button variant="outline" size="default" className="w-full" asChild>
-                    <Link href={`/statements/${s.id}`}>Detalhe</Link>
+                    <Link href={`/statements/${statement.id}`}>Detalhe</Link>
                   </Button>
-                  {s.status !== "paid" && (
-                    <Button size="default" className="w-full" onClick={() => void markPaid(s.id)}>
+                  {statement.status !== "paid" && (
+                    <Button size="default" className="w-full" onClick={() => void markPaid(statement.id)}>
                       Marcar paga
                     </Button>
                   )}

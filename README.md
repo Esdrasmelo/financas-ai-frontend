@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Finanças AI — Frontend
 
-## Getting Started
+Interface web em **Next.js 16** (App Router), **React 19** e **Tailwind CSS 4** para acompanhar despesas, cartões, faturas, planejamento e dashboard. Consome a API do projeto **financas-ai-backend**.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Pré-requisitos
+
+- Node.js ≥ 20  
+- [pnpm](https://pnpm.io/) 9.x (recomendado)  
+- API backend a correr (por defeito `http://localhost:3001`)
+
+---
+
+## Configuração
+
+1. Instalar dependências:
+
+   ```bash
+   pnpm install
+   ```
+
+2. Variáveis de ambiente — copia o exemplo e ajusta se a API não estiver na porta 3001:
+
+   ```bash
+   cp .env.local.example .env.local
+   ```
+
+   | Variável               | Descrição                          |
+   | ---------------------- | ---------------------------------- |
+   | `NEXT_PUBLIC_API_URL`  | URL base da API (ex.: `http://localhost:3001`) |
+
+   O cliente usa `getApiBase()` em `src/lib/api.ts`; se a variável não existir, o fallback é `http://localhost:3001`.
+
+3. Arrancar em desenvolvimento:
+
+   ```bash
+   pnpm dev
+   ```
+
+   Abre [http://localhost:3000](http://localhost:3000) (porta padrão do Next.js).
+
+---
+
+## Scripts
+
+| Comando        | Descrição                 |
+| -------------- | ------------------------- |
+| `pnpm dev`     | Servidor de desenvolvimento |
+| `pnpm build`   | Build de produção         |
+| `pnpm start`   | Serve o build             |
+| `pnpm lint`    | ESLint (config Next.js)   |
+
+---
+
+## O que a app cobre (visão geral)
+
+- **Dashboard** — KPIs, gráficos de evolução e categorias, cartões, próximos vencimentos; filtros por mês (`YYYY-MM`) e visão **por ocorrência** vs **por pagamento**.
+- **Planejamento** — renda, recebimentos, gastos (mesma lógica de totais que o dashboard), sobra e poupança.
+- **Categorias**, **Contas fixas**, **Lançamentos**, **Cartões**, **Compras**, **Faturas** — CRUD e fluxos associados à API.
+
+Componentes partilhados ficam em `src/components/` (UI em `components/ui/`, padrão alinhado a shadcn). Estilos globais e tokens em `src/app/globals.css`.
+
+---
+
+## Estrutura útil
+
+```
+src/
+  app/           # Rotas App Router (páginas por pasta)
+  components/    # Layout, shared, dashboard, ui
+  lib/           # API client, dinheiro, datas, competência, tema de gráficos
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Documentação da API e dos cálculos
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Regras de agregação do dashboard (totais por competência, visão pagamento vs ocorrência, KPIs, faturas, etc.) estão descritas no **`README.md` do backend**, secção *Dashboard: como os números são calculados*.
 
-## Learn More
+Repositório backend: [financas-ai-backend](../financas-ai-backend) (ajusta o caminho relativo se os clones estiverem noutro sítio).
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Licença
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Projeto privado / uso pessoal — ajustar conforme a tua política de repositório.

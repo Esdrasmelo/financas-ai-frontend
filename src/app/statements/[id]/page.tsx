@@ -69,21 +69,22 @@ export default function StatementDetailPage() {
   const [data, setData] = useState<Detail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creditCardName, setCreditCardName] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
       setLoading(true);
-      const r = await fetch(`${base}/statements/${id}`);
+      const response = await fetch(`${base}/statements/${id}`);
       if (cancelled) return;
-      if (!r.ok) {
+      if (!response.ok) {
         setErr("Não encontrada");
         setData(null);
         setLoading(false);
         return;
       }
-      setData((await r.json()) as Detail);
+      setData((await response.json()) as Detail);
       setErr(null);
       setLoading(false);
     })();
@@ -92,9 +93,28 @@ export default function StatementDetailPage() {
     };
   }, [id]);
 
+  useEffect(() => {
+    const creditCardId = data?.statement.creditCardId;
+    if (!creditCardId) {
+      setCreditCardName(null);
+      return;
+    }
+    let cancelled = false;
+    const base = getApiBase();
+    void (async () => {
+      const response = await fetch(`${base}/credit-cards/${creditCardId}`);
+      if (cancelled || !response.ok) return;
+      const card = (await response.json()) as { name: string };
+      if (!cancelled) setCreditCardName(card.name);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.statement.creditCardId]);
+
   const chartData = useMemo(() => {
     if (!data?.categoryBreakdown.length) return [];
-    return data.categoryBreakdown.map((c) => ({ name: c.categoryName, value: c.amountCents }));
+    return data.categoryBreakdown.map((slice) => ({ name: slice.categoryName, value: slice.amountCents }));
   }, [data]);
 
   const monthLabel = data ? `fatura ${formatStatementRefDisplay(data.statement.referenceMonth)}` : "";
@@ -169,7 +189,11 @@ export default function StatementDetailPage() {
 
       <PageHeader
         title={`Fatura ${formatStatementRefDisplay(data.statement.referenceMonth)}`}
-        subtitle={`Vencimento ${formatDateDdMmYyyy(data.statement.dueDate)}`}
+        subtitle={
+          creditCardName
+            ? `${creditCardName} · Vencimento ${formatDateDdMmYyyy(data.statement.dueDate)}`
+            : `Vencimento ${formatDateDdMmYyyy(data.statement.dueDate)}`
+        }
       />
 
       <Card>
@@ -183,7 +207,13 @@ export default function StatementDetailPage() {
             <p className="text-2xl font-bold tracking-tight text-foreground">{formatBRLFromCents(data.totalPendingCents)}</p>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-2">
+          {creditCardName ? (
+            <p className="text-sm text-muted-foreground">
+              Cartão{" "}
+              <span className="font-medium text-foreground">{creditCardName}</span>
+            </p>
+          ) : null}
           <p className="text-sm text-muted-foreground">
             {data.installments.length} lançamento{data.installments.length !== 1 ? "s" : ""} nesta fatura
           </p>
@@ -270,18 +300,18 @@ export default function StatementDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.installments.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.purchaseDescription}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.categoryName}</TableCell>
+                {data.installments.map((installment) => (
+                  <TableRow key={installment.id}>
+                    <TableCell className="font-medium">{installment.purchaseDescription}</TableCell>
+                    <TableCell className="text-muted-foreground">{installment.categoryName}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">
-                        {r.installmentNumber}/{r.totalInstallments}
+                        {installment.installmentNumber}/{installment.totalInstallments}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatBRLFromCents(r.amountCents)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatBRLFromCents(installment.amountCents)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{installmentStatusLabel(r.status)}</Badge>
+                      <Badge variant="outline">{installmentStatusLabel(installment.status)}</Badge>
                     </TableCell>
                   </TableRow>
                 ))}
