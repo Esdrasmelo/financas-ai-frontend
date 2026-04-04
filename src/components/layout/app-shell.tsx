@@ -19,6 +19,7 @@ const links = [
   { href: "/credit-cards", label: "Cartões" },
   { href: "/purchases", label: "Compras" },
   { href: "/statements", label: "Faturas" },
+  { href: "/guia", label: "Guia" },
 ];
 
 export function AppShell({

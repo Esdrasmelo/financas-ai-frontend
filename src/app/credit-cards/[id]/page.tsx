@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,9 +21,13 @@ import { CategoryDonutTooltip } from "@/components/dashboard/category-donut-tool
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DataTable } from "@/components/shared/data-table";
 import { CompetencyViewTip } from "@/components/shared/competency-view-tip";
+import { CreditCardFace } from "@/components/credit-cards/credit-card-face";
+
 type CardDetail = {
   id: string;
   name: string;
+  brand: string | null;
+  themeColor: string | null;
   limitCents: number | null;
   closingDay: number;
   dueDay: number;
@@ -168,6 +172,29 @@ export default function CreditCardDetailPage() {
             : `Fecha dia ${card.closingDay} · Vence dia ${card.dueDay}`
         }
       />
+
+      <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:p-5">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
+          <CreditCardFace name={card.name} brand={card.brand} themeColor={card.themeColor} variant="compact" />
+          <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
+            Os gráficos abaixo mostram <strong className="font-medium text-foreground">gastos por mês</strong> e{" "}
+            <strong className="font-medium text-foreground">por categoria</strong>. Cor, bandeira, nome, limite e datas de
+            fechamento ou vencimento você ajusta em{" "}
+            <strong className="font-medium text-foreground">Personalizar cartão</strong>.
+          </p>
+        </div>
+        <Button
+          variant="default"
+          size="lg"
+          className="h-12 w-full shrink-0 gap-2 rounded-xl px-6 text-base font-semibold shadow-md transition-shadow hover:shadow-lg sm:h-11 sm:w-auto"
+          asChild
+        >
+          <Link href={`/credit-cards/${id}/personalizar`}>
+            <Palette className="!size-5" aria-hidden />
+            Personalizar cartão
+          </Link>
+        </Button>
+      </div>
 
       <Card className="mt-1">
         <CardContent className="flex flex-col gap-4 p-5 pt-6 sm:p-6 sm:pt-7">

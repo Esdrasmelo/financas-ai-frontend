@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getApiBase } from "@/lib/api";
@@ -63,13 +66,33 @@ function installmentStatusLabel(s: string) {
   return s;
 }
 
+type CreditCardOption = { id: string; name: string };
+
+type StatementRow = { id: string; creditCardId: string; referenceMonth: string };
+
 export default function StatementDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = String(params.id);
   const [data, setData] = useState<Detail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creditCardName, setCreditCardName] = useState<string | null>(null);
+  const [cards, setCards] = useState<CreditCardOption[]>([]);
+  const [cardSwitchLoading, setCardSwitchLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const base = getApiBase();
+    void (async () => {
+      const response = await fetch(`${base}/credit-cards`);
+      if (cancelled || !response.ok) return;
+      setCards((await response.json()) as CreditCardOption[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +134,31 @@ export default function StatementDetailPage() {
       cancelled = true;
     };
   }, [data?.statement.creditCardId]);
+
+  async function onCardChange(newCardId: string) {
+    if (!data || newCardId === data.statement.creditCardId) return;
+    const refMonth = data.statement.referenceMonth;
+    setCardSwitchLoading(true);
+    try {
+      const base = getApiBase();
+      const response = await fetch(`${base}/credit-cards/${newCardId}/statements`);
+      if (!response.ok) {
+        toast.error("Erro ao carregar faturas deste cartão");
+        return;
+      }
+      const statements = (await response.json()) as StatementRow[];
+      const match = statements.find((statementRow) => statementRow.referenceMonth === refMonth);
+      if (!match) {
+        toast.error(
+          `Este cartão não tem fatura no mês ${formatStatementRefDisplay(refMonth)}. Escolha outro cartão ou abra a lista em Faturas.`,
+        );
+        return;
+      }
+      router.push(`/statements/${match.id}`);
+    } finally {
+      setCardSwitchLoading(false);
+    }
+  }
 
   const chartData = useMemo(() => {
     if (!data?.categoryBreakdown.length) return [];
@@ -194,7 +242,31 @@ export default function StatementDetailPage() {
             ? `${creditCardName} · Vencimento ${formatDateDdMmYyyy(data.statement.dueDate)}`
             : `Vencimento ${formatDateDdMmYyyy(data.statement.dueDate)}`
         }
-      />
+      >
+        {cards.length > 1 ? (
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:min-w-[220px]">
+            <Label htmlFor="statement-card-select" className="text-xs font-medium text-muted-foreground">
+              Ver mesmo mês em outro cartão
+            </Label>
+            <Select
+              value={data.statement.creditCardId}
+              disabled={cardSwitchLoading}
+              onValueChange={(value) => void onCardChange(value)}
+            >
+              <SelectTrigger id="statement-card-select" className="w-full sm:w-[280px]">
+                <SelectValue placeholder="Cartão" />
+              </SelectTrigger>
+              <SelectContent>
+                {cards.map((card) => (
+                  <SelectItem key={card.id} value={card.id}>
+                    {card.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+      </PageHeader>
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 pb-2">
