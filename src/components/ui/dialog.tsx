@@ -5,6 +5,19 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Popovers do MUI (DatePicker etc.) vão para o body. Sem isso, o DismissableLayer trata como “fora” e pode fechar.
+ * O FocusScope com trap também devolve o foco para o diálogo e o picker some — use trapFocus={false} nesses modais.
+ */
+function isMuiPortaledPickerLayer(node: EventTarget | null): boolean {
+  if (!(node instanceof Element)) return false;
+  return Boolean(
+    node.closest(".MuiPickersPopper-root") ||
+      node.closest(".MuiPopover-root") ||
+      node.closest(".MuiPopper-root"),
+  );
+}
+
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
@@ -22,27 +35,42 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+type DialogContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  /** Quando false, não renderiza o botão absoluto no canto (útil se o fechar fica na própria faixa de título). */
+  showCloseButton?: boolean;
+};
+
 const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  DialogContentProps
+>(({ className, children, showCloseButton = true, onPointerDownOutside, onInteractOutside, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      {...props}
       className={cn(
         "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-xl outline-none sm:w-full",
         className,
       )}
-      {...props}
+      onPointerDownOutside={(e) => {
+        if (isMuiPortaledPickerLayer(e.target)) e.preventDefault();
+        onPointerDownOutside?.(e);
+      }}
+      onInteractOutside={(e) => {
+        if (isMuiPortaledPickerLayer(e.target)) e.preventDefault();
+        onInteractOutside?.(e);
+      }}
     >
       {children}
-      <DialogPrimitive.Close
-        className="absolute right-4 top-4 rounded-lg p-1 text-muted-foreground opacity-80 ring-offset-background transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
-        aria-label="Fechar"
-      >
-        <X className="h-4 w-4" />
-      </DialogPrimitive.Close>
+      {showCloseButton ? (
+        <DialogPrimitive.Close
+          className="absolute right-4 top-4 rounded-lg p-1 text-muted-foreground opacity-80 ring-offset-background transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+          aria-label="Fechar"
+        >
+          <X className="h-4 w-4" />
+        </DialogPrimitive.Close>
+      ) : null}
     </DialogPrimitive.Content>
   </DialogPortal>
 ));
