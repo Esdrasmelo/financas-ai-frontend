@@ -60,12 +60,38 @@ export default function EntriesPage() {
   const [cats, setCats] = useState<Category[]>([]);
   const [summary, setSummary] = useState<MonthlySummary | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  /** Origem do lançamento em edição (para título e aviso no painel) */
+  const [editingSourceType, setEditingSourceType] = useState<string | null>(null);
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("pix");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  function openNewEntrySheet() {
+    setEditingEntryId(null);
+    setEditingSourceType(null);
+    setDesc("");
+    setAmount("");
+    setPaymentMethod("pix");
+    setDate(new Date().toISOString().slice(0, 10));
+    setCategoryId(cats[0]?.id ?? "");
+    setSheetOpen(true);
+  }
+
+  function openEditEntry(entry: Entry) {
+    setEditingEntryId(entry.id);
+    setEditingSourceType(entry.sourceType);
+    setDesc(entry.description);
+    setAmount((entry.amountCents / 100).toFixed(2).replace(".", ","));
+    const d = new Date(entry.date);
+    setDate(Number.isNaN(d.getTime()) ? new Date().toISOString().slice(0, 10) : d.toISOString().slice(0, 10));
+    setCategoryId(entry.categoryId);
+    setPaymentMethod(entry.paymentMethod);
+    setSheetOpen(true);
+  }
 
   async function refreshEntries() {
     const base = getApiBase();
@@ -132,25 +158,35 @@ export default function EntriesPage() {
     }
     const base = getApiBase();
     const iso = new Date(`${date}T12:00:00.000Z`).toISOString();
-    const response = await fetch(`${base}/entries`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        description: desc,
-        amountCents: cents,
-        date: iso,
-        categoryId,
-        paymentMethod,
-        competencyMonth: month,
-      }),
-    });
+    const body = {
+      description: desc,
+      amountCents: cents,
+      date: iso,
+      categoryId,
+      paymentMethod,
+      competencyMonth: month,
+    };
+    const response = editingEntryId
+      ? await fetch(`${base}/entries/${editingEntryId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+      : await fetch(`${base}/entries`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
     if (!response.ok) {
-      toast.error("Erro ao salvar");
+      toast.error(editingEntryId ? "Erro ao atualizar" : "Erro ao salvar");
       return;
     }
+    const wasEdit = editingEntryId !== null;
     setDesc("");
     setAmount("");
-    toast.success("Lançamento criado");
+    setEditingEntryId(null);
+    setEditingSourceType(null);
+    toast.success(wasEdit ? "Lançamento atualizado" : "Lançamento criado");
     setSheetOpen(false);
     void refreshEntries();
   }
@@ -182,7 +218,7 @@ export default function EntriesPage() {
             </Label>
             <Input id="m" className="w-36" value={month} onChange={(e) => setMonth(e.target.value)} />
           </div>
-          <Button onClick={() => setSheetOpen(true)} className="gap-2">
+          <Button onClick={() => openNewEntrySheet()} className="gap-2">
             <Plus className="h-4 w-4" />
             Novo gasto
           </Button>
@@ -220,7 +256,7 @@ export default function EntriesPage() {
             title="Nada neste mês"
             description="Adicione um gasto variável ou gere contas fixas."
             action={
-              <Button onClick={() => setSheetOpen(true)} variant="secondary">
+              <Button onClick={() => openNewEntrySheet()} variant="secondary">
                 Novo gasto
               </Button>
             }
@@ -246,14 +282,25 @@ export default function EntriesPage() {
                     <TableCell className="text-right tabular-nums">
                       <MoneyValue cents={entry.amountCents} />
                     </TableCell>
-                    <TableCell>{entry.sourceType}</TableCell>
-                    <TableCell>{entry.paymentMethod}</TableCell>
+                    <TableCell>
+                      {entry.sourceType === "variable"
+                        ? "Variável"
+                        : entry.sourceType === "fixed_expense"
+                          ? "Conta fixa"
+                          : entry.sourceType}
+                    </TableCell>
+                    <TableCell>
+                      {methods.find((method) => method.v === entry.paymentMethod)?.l ?? entry.paymentMethod}
+                    </TableCell>
                     <TableCell className="text-right">
-                      {entry.sourceType === "variable" && (
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button type="button" size="sm" variant="secondary" onClick={() => openEditEntry(entry)}>
+                          Editar
+                        </Button>
                         <Button type="button" size="sm" variant="outline" onClick={() => setDeleteId(entry.id)}>
                           Excluir
                         </Button>
-                      )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -263,10 +310,31 @@ export default function EntriesPage() {
         )}
       </SectionCard>
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <Sheet
+        open={sheetOpen}
+        onOpenChange={(open) => {
+          setSheetOpen(open);
+          if (!open) {
+            setEditingEntryId(null);
+            setEditingSourceType(null);
+          }
+        }}
+      >
         <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-md">
           <SheetHeader>
-            <SheetTitle>Novo gasto variável</SheetTitle>
+            <SheetTitle>
+              {editingEntryId
+                ? editingSourceType === "fixed_expense"
+                  ? "Editar lançamento (conta fixa)"
+                  : "Editar gasto variável"
+                : "Novo gasto variável"}
+            </SheetTitle>
+            {editingEntryId && editingSourceType === "fixed_expense" ? (
+              <p className="pt-1 text-sm leading-relaxed text-muted-foreground">
+                As alterações valem só para <strong className="font-medium text-foreground">este mês</strong>. O cadastro da conta fixa em{" "}
+                <strong className="font-medium text-foreground">Contas fixas</strong> não muda; na próxima geração o valor pode voltar ao padrão da conta.
+              </p>
+            ) : null}
           </SheetHeader>
           <form className="mt-6 flex flex-1 flex-col gap-4" onSubmit={submit}>
             <div className="space-y-2">
@@ -317,7 +385,7 @@ export default function EntriesPage() {
                 Cancelar
               </Button>
               <Button type="submit" className="flex-1">
-                Salvar
+                {editingEntryId ? "Atualizar" : "Salvar"}
               </Button>
             </div>
           </form>

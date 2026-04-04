@@ -29,6 +29,18 @@ type Fixed = {
 };
 type Category = { id: string; name: string };
 
+function formatCentsAsBrlInput(cents: number) {
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+function parseBrlInputToCents(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const cents = Math.round(parseFloat(trimmed.replace(",", ".")) * 100);
+  if (!Number.isFinite(cents) || cents < 0) return null;
+  return cents;
+}
+
 export default function FixedExpensesPage() {
   const [list, setList] = useState<Fixed[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
@@ -41,6 +53,12 @@ export default function FixedExpensesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [categorySavingId, setCategorySavingId] = useState<string | null>(null);
+  const [amountSavingId, setAmountSavingId] = useState<string | null>(null);
+  const [amountDraft, setAmountDraft] = useState<Record<string, string>>({});
+
+  function amountDisplay(expense: Fixed) {
+    return amountDraft[expense.id] ?? formatCentsAsBrlInput(expense.amountCents);
+  }
 
   async function refreshFixed() {
     const base = getApiBase();
@@ -153,6 +171,49 @@ export default function FixedExpensesPage() {
     }
   }
 
+  async function commitFixedAmount(fixedId: string, raw: string, currentCents: number) {
+    const cents = parseBrlInputToCents(raw);
+    if (cents === null) {
+      toast.error("Valor inválido");
+      setAmountDraft((d) => {
+        const next = { ...d };
+        delete next[fixedId];
+        return next;
+      });
+      return;
+    }
+    if (cents === currentCents) {
+      setAmountDraft((d) => {
+        const next = { ...d };
+        delete next[fixedId];
+        return next;
+      });
+      return;
+    }
+    const base = getApiBase();
+    setAmountSavingId(fixedId);
+    try {
+      const response = await fetch(`${base}/fixed-expenses/${fixedId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountCents: cents }),
+      });
+      if (!response.ok) {
+        toast.error("Erro ao atualizar valor");
+        return;
+      }
+      toast.success("Valor atualizado");
+      await refreshFixed();
+      setAmountDraft((d) => {
+        const next = { ...d };
+        delete next[fixedId];
+        return next;
+      });
+    } finally {
+      setAmountSavingId(null);
+    }
+  }
+
   async function generate() {
     const base = getApiBase();
     const response = await fetch(`${base}/fixed-expenses/generate-monthly-entries`, {
@@ -232,7 +293,7 @@ export default function FixedExpensesPage() {
 
       <SectionCard
         title="Gerar lançamentos do mês"
-        description="Cria entradas mensais para contas ativas conforme as regras de cada uma"
+        description="Cria entradas mensais para contas ativas conforme as regras de cada uma. Na tabela abaixo você pode ajustar o valor ou referência (útil para contas variáveis antes de gerar o mês)."
       >
         <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-2">
@@ -247,7 +308,7 @@ export default function FixedExpensesPage() {
 
       <SectionCard
         title="Contas cadastradas"
-        description={`${filtered.length} exibida${filtered.length !== 1 ? "s" : ""} · Soma dos valores listados: ${formatBRLFromCents(totalFilteredCents)}`}
+        description={`${filtered.length} exibida${filtered.length !== 1 ? "s" : ""} · Soma dos valores da tabela: ${formatBRLFromCents(totalFilteredCents)}. Edite o valor em R$ na linha; salva ao sair do campo ou ao pressionar Enter (útil para atualizar referência de contas variáveis).`}
         action={
           <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative min-w-[180px] flex-1">
@@ -278,7 +339,7 @@ export default function FixedExpensesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>Valor / ref.</TableHead>
+                <TableHead className="min-w-[9rem]">Valor (R$)</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Categoria</TableHead>
                 <TableHead>Dia</TableHead>
@@ -290,7 +351,23 @@ export default function FixedExpensesPage() {
               {filtered.map((expense) => (
                 <TableRow key={expense.id}>
                   <TableCell className="font-medium">{expense.name}</TableCell>
-                  <TableCell>{formatBRLFromCents(expense.amountCents)}</TableCell>
+                  <TableCell className="align-top">
+                    <Input
+                      className="h-9 w-full min-w-[7rem] max-w-[8.5rem] font-medium tabular-nums"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      aria-label={`Valor em reais — ${expense.name}`}
+                      value={amountDisplay(expense)}
+                      disabled={categorySavingId === expense.id || amountSavingId === expense.id}
+                      onChange={(e) => setAmountDraft((d) => ({ ...d, [expense.id]: e.target.value }))}
+                      onBlur={() => void commitFixedAmount(expense.id, amountDisplay(expense), expense.amountCents)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                    />
+                  </TableCell>
                   <TableCell>
                     {expense.isVariableAmount === true ? (
                       <Badge variant="warning">Variável</Badge>
