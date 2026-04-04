@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { getApiBase } from "@/lib/api";
 import { currentCompetencyMonth, formatBRLFromCents } from "@/lib/money";
 import { addMonthsToCompetencyMonth } from "@/lib/competency-month";
-import { CHART_SERIES_COLORS } from "@/lib/chart-theme";
+import { chartPrimaryFromTheme, chartSeriesColorsFromTheme } from "@/lib/chart-theme";
 import { CategoryDonutTooltip } from "@/components/dashboard/category-donut-tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DataTable } from "@/components/shared/data-table";
@@ -137,6 +137,13 @@ export default function CreditCardDetailPage() {
     [analytics],
   );
 
+  const pieColors = useMemo(
+    () => chartSeriesColorsFromTheme(card?.themeColor ?? null, pieData.length),
+    [card?.themeColor, pieData.length],
+  );
+
+  const barFill = chartPrimaryFromTheme(card?.themeColor ?? null);
+
   const viewLabel = view === "payment" ? "por competência (pagamento)" : "por data da compra";
 
   if (err || !card) {
@@ -244,7 +251,7 @@ export default function CreditCardDetailPage() {
                   }
                 />
                 <Tooltip content={<BarTip />} cursor={{ fill: "var(--muted)", opacity: 0.15 }} />
-                <Bar dataKey="totalCents" fill={CHART_SERIES_COLORS[0]} radius={[6, 6, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="totalCents" fill={barFill} radius={[6, 6, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -276,7 +283,7 @@ export default function CreditCardDetailPage() {
                     {pieData.map((_, i) => (
                       <Cell
                         key={i}
-                        fill={CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length]}
+                        fill={pieColors[i] ?? pieColors[0]}
                         stroke="var(--card)"
                         strokeWidth={2}
                       />
