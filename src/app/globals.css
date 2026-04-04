@@ -102,24 +102,3 @@ html.dark :root {
   --ring: #5a9a8f;
 }
 
-/* react-day-picker */
-.purchase-calendar .rdp-root {
-  --rdp-accent-color: var(--primary);
-  --rdp-accent-background-color: var(--accent);
-  --rdp-day-height: 2.35rem;
-  --rdp-day-width: 2.35rem;
-  --rdp-day_button-border-radius: 0.5rem;
-  font-size: 0.875rem;
-}
-
-html.dark .purchase-calendar .rdp-root {
-  color: var(--foreground);
-}
-
-html.dark .purchase-calendar .rdp-weekday {
-  color: var(--muted-foreground);
-}
-
-html.dark .purchase-calendar .rdp-day_button {
-  color: var(--foreground);
-}
