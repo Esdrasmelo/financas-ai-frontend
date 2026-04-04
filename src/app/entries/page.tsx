@@ -69,37 +69,37 @@ export default function EntriesPage() {
 
   async function refreshEntries() {
     const base = getApiBase();
-    const [e, c, s] = await Promise.all([
+    const [entriesResponse, categoriesResponse, summaryResponse] = await Promise.all([
       fetch(`${base}/entries?competencyMonth=${encodeURIComponent(month)}`),
       fetch(`${base}/categories`),
       fetch(`${base}/entries/monthly-summary?competencyMonth=${encodeURIComponent(month)}`),
     ]);
-    if (e.ok) setList((await e.json()) as Entry[]);
-    if (c.ok) {
-      const cl = (await c.json()) as Category[];
-      setCats(cl);
-      setCategoryId((prev) => prev || (cl[0]?.id ?? ""));
+    if (entriesResponse.ok) setList((await entriesResponse.json()) as Entry[]);
+    if (categoriesResponse.ok) {
+      const categoriesJson = (await categoriesResponse.json()) as Category[];
+      setCats(categoriesJson);
+      setCategoryId((prev) => prev || (categoriesJson[0]?.id ?? ""));
     }
-    if (s.ok) setSummary((await s.json()) as MonthlySummary);
+    if (summaryResponse.ok) setSummary((await summaryResponse.json()) as MonthlySummary);
   }
 
   useEffect(() => {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const [e, c, s] = await Promise.all([
+      const [entriesResponse, categoriesResponse, summaryResponse] = await Promise.all([
         fetch(`${base}/entries?competencyMonth=${encodeURIComponent(month)}`),
         fetch(`${base}/categories`),
         fetch(`${base}/entries/monthly-summary?competencyMonth=${encodeURIComponent(month)}`),
       ]);
       if (cancelled) return;
-      if (e.ok) setList((await e.json()) as Entry[]);
-      if (c.ok) {
-        const cl = (await c.json()) as Category[];
-        setCats(cl);
-        setCategoryId((prev) => prev || (cl[0]?.id ?? ""));
+      if (entriesResponse.ok) setList((await entriesResponse.json()) as Entry[]);
+      if (categoriesResponse.ok) {
+        const categoriesJson = (await categoriesResponse.json()) as Category[];
+        setCats(categoriesJson);
+        setCategoryId((prev) => prev || (categoriesJson[0]?.id ?? ""));
       }
-      if (s.ok) setSummary((await s.json()) as MonthlySummary);
+      if (summaryResponse.ok) setSummary((await summaryResponse.json()) as MonthlySummary);
     })();
     return () => {
       cancelled = true;
@@ -107,17 +107,20 @@ export default function EntriesPage() {
   }, [month]);
 
   const topVariableCategory = useMemo(() => {
-    const vars = list.filter((x) => x.sourceType === "variable");
+    const vars = list.filter((entry) => entry.sourceType === "variable");
     const map = new Map<string, number>();
-    for (const e of vars) {
-      map.set(e.categoryId, (map.get(e.categoryId) ?? 0) + e.amountCents);
+    for (const variableEntry of vars) {
+      map.set(
+        variableEntry.categoryId,
+        (map.get(variableEntry.categoryId) ?? 0) + variableEntry.amountCents,
+      );
     }
     let best: { id: string; cents: number } | null = null;
     for (const [id, cents] of map) {
       if (!best || cents > best.cents) best = { id, cents };
     }
     if (!best) return null;
-    return { name: cats.find((c) => c.id === best!.id)?.name ?? "—", cents: best.cents };
+    return { name: cats.find((category) => category.id === best!.id)?.name ?? "—", cents: best.cents };
   }, [list, cats]);
 
   async function submit(ev: React.FormEvent) {
@@ -129,7 +132,7 @@ export default function EntriesPage() {
     }
     const base = getApiBase();
     const iso = new Date(`${date}T12:00:00.000Z`).toISOString();
-    const r = await fetch(`${base}/entries`, {
+    const response = await fetch(`${base}/entries`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -141,7 +144,7 @@ export default function EntriesPage() {
         competencyMonth: month,
       }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Erro ao salvar");
       return;
     }
@@ -154,8 +157,8 @@ export default function EntriesPage() {
 
   async function remove(id: string) {
     const base = getApiBase();
-    const r = await fetch(`${base}/entries/${id}`, { method: "DELETE" });
-    if (!r.ok) {
+    const response = await fetch(`${base}/entries/${id}`, { method: "DELETE" });
+    if (!response.ok) {
       toast.error("Erro ao excluir");
       return;
     }
@@ -164,7 +167,7 @@ export default function EntriesPage() {
     void refreshEntries();
   }
 
-  const variableList = list.filter((x) => x.sourceType === "variable");
+  const variableList = list.filter((entry) => entry.sourceType === "variable");
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -212,7 +215,7 @@ export default function EntriesPage() {
       </div>
 
       <SectionCard title={`Movimentação — ${month}`} contentClassName="pt-0">
-        {variableList.length === 0 && list.filter((x) => x.sourceType !== "variable").length === 0 ? (
+        {variableList.length === 0 && list.filter((entry) => entry.sourceType !== "variable").length === 0 ? (
           <EmptyState
             title="Nada neste mês"
             description="Adicione um gasto variável ou gere contas fixas."
@@ -236,18 +239,18 @@ export default function EntriesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {list.map((x) => (
-                  <TableRow key={x.id}>
-                    <TableCell className="font-medium">{x.description}</TableCell>
-                    <TableCell>{formatDateDdMmYyyy(x.date)}</TableCell>
+                {list.map((entry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="font-medium">{entry.description}</TableCell>
+                    <TableCell>{formatDateDdMmYyyy(entry.date)}</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      <MoneyValue cents={x.amountCents} />
+                      <MoneyValue cents={entry.amountCents} />
                     </TableCell>
-                    <TableCell>{x.sourceType}</TableCell>
-                    <TableCell>{x.paymentMethod}</TableCell>
+                    <TableCell>{entry.sourceType}</TableCell>
+                    <TableCell>{entry.paymentMethod}</TableCell>
                     <TableCell className="text-right">
-                      {x.sourceType === "variable" && (
-                        <Button type="button" size="sm" variant="outline" onClick={() => setDeleteId(x.id)}>
+                      {entry.sourceType === "variable" && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => setDeleteId(entry.id)}>
                           Excluir
                         </Button>
                       )}
@@ -286,9 +289,9 @@ export default function EntriesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {cats.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
+                  {cats.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -301,9 +304,9 @@ export default function EntriesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {methods.map((m) => (
-                    <SelectItem key={m.v} value={m.v}>
-                      {m.l}
+                  {methods.map((method) => (
+                    <SelectItem key={method.v} value={method.v}>
+                      {method.l}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getApiBase } from "@/lib/api";
 import { currentCompetencyMonth, formatBRLFromCents } from "@/lib/money";
 import { MoneyValue } from "@/components/shared/money-value";
+import { CompetencyViewTip } from "@/components/shared/competency-view-tip";
 
 type SavingsDeposit = {
   id: string;
@@ -52,12 +53,12 @@ type BudgetMonthResponse = {
   surplusCents: number | null;
 };
 
-function parseMoneyToCents(s: string): number | null {
-  const t = s.trim();
-  if (t === "") return null;
-  const n = Math.round(parseFloat(t.replace(",", ".")) * 100);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n;
+function parseMoneyToCents(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const cents = Math.round(parseFloat(trimmed.replace(",", ".")) * 100);
+  if (!Number.isFinite(cents) || cents < 0) return null;
+  return cents;
 }
 
 export default function PlanningPage() {
@@ -77,16 +78,18 @@ export default function PlanningPage() {
   const load = useCallback(async () => {
     const base = getApiBase();
     setLoading(true);
-    const r = await fetch(`${base}/budget/month/${encodeURIComponent(month)}?view=${view}`);
-    if (!r.ok) {
+    const response = await fetch(`${base}/budget/month/${encodeURIComponent(month)}?view=${view}`);
+    if (!response.ok) {
       toast.error("Erro ao carregar planejamento");
       setData(null);
       setLoading(false);
       return;
     }
-    const j = (await r.json()) as BudgetMonthResponse;
-    setData(j);
-    setSalaryInput(j.salaryCents != null ? (j.salaryCents / 100).toFixed(2).replace(".", ",") : "");
+    const budgetMonth = (await response.json()) as BudgetMonthResponse;
+    setData(budgetMonth);
+    setSalaryInput(
+      budgetMonth.salaryCents != null ? (budgetMonth.salaryCents / 100).toFixed(2).replace(".", ",") : "",
+    );
     setLoading(false);
   }, [month, view]);
 
@@ -103,20 +106,20 @@ export default function PlanningPage() {
     const trimmed = salaryInput.trim();
     let salaryCents: number | null = null;
     if (trimmed !== "") {
-      const n = Math.round(parseFloat(trimmed.replace(",", ".")) * 100);
-      if (!Number.isFinite(n) || n < 0) {
+      const parsedCents = Math.round(parseFloat(trimmed.replace(",", ".")) * 100);
+      if (!Number.isFinite(parsedCents) || parsedCents < 0) {
         toast.error("Salário inválido");
         return;
       }
-      salaryCents = n;
+      salaryCents = parsedCents;
     }
     const base = getApiBase();
-    const r = await fetch(`${base}/budget/month/${encodeURIComponent(month)}`, {
+    const response = await fetch(`${base}/budget/month/${encodeURIComponent(month)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ salaryCents }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Erro ao salvar salário");
       return;
     }
@@ -131,7 +134,7 @@ export default function PlanningPage() {
       return;
     }
     const base = getApiBase();
-    const r = await fetch(`${base}/budget/income-receipts`, {
+    const response = await fetch(`${base}/budget/income-receipts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -140,7 +143,7 @@ export default function PlanningPage() {
         note: incomeNote.trim() || null,
       }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Erro ao registrar recebimento");
       return;
     }
@@ -152,8 +155,8 @@ export default function PlanningPage() {
 
   async function removeIncomeReceipt(id: string) {
     const base = getApiBase();
-    const r = await fetch(`${base}/budget/income-receipts/${id}`, { method: "DELETE" });
-    if (!r.ok) {
+    const response = await fetch(`${base}/budget/income-receipts/${id}`, { method: "DELETE" });
+    if (!response.ok) {
       toast.error("Erro ao remover");
       return;
     }
@@ -168,7 +171,7 @@ export default function PlanningPage() {
       return;
     }
     const base = getApiBase();
-    const r = await fetch(`${base}/budget/savings`, {
+    const response = await fetch(`${base}/budget/savings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -177,7 +180,7 @@ export default function PlanningPage() {
         note: savingNote.trim() || null,
       }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Erro ao registrar poupança");
       return;
     }
@@ -189,8 +192,8 @@ export default function PlanningPage() {
 
   async function removeSaving(id: string) {
     const base = getApiBase();
-    const r = await fetch(`${base}/budget/savings/${id}`, { method: "DELETE" });
-    if (!r.ok) {
+    const response = await fetch(`${base}/budget/savings/${id}`, { method: "DELETE" });
+    if (!response.ok) {
       toast.error("Erro ao remover");
       return;
     }
@@ -247,17 +250,20 @@ export default function PlanningPage() {
         subtitle="Renda (salário + recebimentos), gastos do app, sobra, poupança e simulação rápida sem salvar"
       />
 
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="plan-month">Mês (YYYY-MM)</Label>
-          <Input id="plan-month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-40" />
+      <div className="flex max-w-2xl flex-col gap-3">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="plan-month">Mês (YYYY-MM)</Label>
+            <Input id="plan-month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-40" />
+          </div>
+          <Tabs value={view} onValueChange={(v) => setView(v as "payment" | "occurrence")}>
+            <TabsList>
+              <TabsTrigger value="payment">Pagamento</TabsTrigger>
+              <TabsTrigger value="occurrence">Ocorrência</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        <Tabs value={view} onValueChange={(v) => setView(v as "payment" | "occurrence")}>
-          <TabsList>
-            <TabsTrigger value="payment">Pagamento</TabsTrigger>
-            <TabsTrigger value="occurrence">Ocorrência</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <CompetencyViewTip />
       </div>
 
       {loading && !data ? (
@@ -330,16 +336,16 @@ export default function PlanningPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.incomeReceipts.map((s) => (
-                      <TableRow key={s.id}>
-                        <TableCell className="font-medium tabular-nums">{formatBRLFromCents(s.amountCents)}</TableCell>
-                        <TableCell className="text-muted-foreground">{s.note ?? "—"}</TableCell>
+                    {data.incomeReceipts.map((receipt) => (
+                      <TableRow key={receipt.id}>
+                        <TableCell className="font-medium tabular-nums">{formatBRLFromCents(receipt.amountCents)}</TableCell>
+                        <TableCell className="text-muted-foreground">{receipt.note ?? "—"}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            onClick={() => void removeIncomeReceipt(s.id)}
+                            onClick={() => void removeIncomeReceipt(receipt.id)}
                             aria-label="Remover"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -499,12 +505,18 @@ export default function PlanningPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.savingsDeposits.map((s) => (
-                      <TableRow key={s.id}>
-                        <TableCell className="font-medium tabular-nums">{formatBRLFromCents(s.amountCents)}</TableCell>
-                        <TableCell className="text-muted-foreground">{s.note ?? "—"}</TableCell>
+                    {data.savingsDeposits.map((deposit) => (
+                      <TableRow key={deposit.id}>
+                        <TableCell className="font-medium tabular-nums">{formatBRLFromCents(deposit.amountCents)}</TableCell>
+                        <TableCell className="text-muted-foreground">{deposit.note ?? "—"}</TableCell>
                         <TableCell className="text-right">
-                          <Button type="button" variant="ghost" size="icon" onClick={() => void removeSaving(s.id)} aria-label="Remover">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => void removeSaving(deposit.id)}
+                            aria-label="Remover"
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </TableCell>

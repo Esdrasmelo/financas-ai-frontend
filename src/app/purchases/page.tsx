@@ -42,9 +42,9 @@ type PurchaseRow = {
 type PreviewRow = { referenceMonth: string; amountCents: number; installmentNumber: number; dueDate?: string };
 
 function isoDateToYmd(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
-  return d.toISOString().slice(0, 10);
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString().slice(0, 10);
+  return parsed.toISOString().slice(0, 10);
 }
 
 /** Data sugerida: não ultrapassa hoje nem o fim do período da fatura (UTC). */
@@ -81,17 +81,20 @@ function PurchasesPageInner() {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const [c, k] = await Promise.all([fetch(`${base}/categories`), fetch(`${base}/credit-cards`)]);
+      const [categoriesResponse, cardsResponse] = await Promise.all([
+        fetch(`${base}/categories`),
+        fetch(`${base}/credit-cards`),
+      ]);
       if (cancelled) return;
-      if (c.ok) {
-        const cl = (await c.json()) as Category[];
-        setCats(cl);
-        setCategoryId((p) => p || (cl[0]?.id ?? ""));
+      if (categoriesResponse.ok) {
+        const categoriesJson = (await categoriesResponse.json()) as Category[];
+        setCats(categoriesJson);
+        setCategoryId((prev) => prev || (categoriesJson[0]?.id ?? ""));
       }
-      if (k.ok) {
-        const kl = (await k.json()) as CardRow[];
-        setCards(kl);
-        setCreditCardId((p) => p || (kl[0]?.id ?? ""));
+      if (cardsResponse.ok) {
+        const cardsJson = (await cardsResponse.json()) as CardRow[];
+        setCards(cardsJson);
+        setCreditCardId((prev) => prev || (cardsJson[0]?.id ?? ""));
       }
     })();
     return () => {
@@ -102,7 +105,7 @@ function PurchasesPageInner() {
   useEffect(() => {
     const cc = searchParams.get("creditCardId");
     if (!cc || editingId || cards.length === 0) return;
-    if (cards.some((c) => c.id === cc)) setCreditCardId(cc);
+    if (cards.some((card) => card.id === cc)) setCreditCardId(cc);
   }, [searchParams, editingId, cards]);
 
   useEffect(() => {
@@ -111,9 +114,9 @@ function PurchasesPageInner() {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const r = await fetch(`${base}/statements/${statementId}`);
-      if (cancelled || !r.ok) return;
-      const detail = (await r.json()) as {
+      const response = await fetch(`${base}/statements/${statementId}`);
+      if (cancelled || !response.ok) return;
+      const detail = (await response.json()) as {
         statement: { creditCardId: string; periodEnd: string; referenceMonth: string };
       };
       setCreditCardId(detail.statement.creditCardId);
@@ -131,10 +134,12 @@ function PurchasesPageInner() {
     if (!creditCardId) return;
     let cancelled = false;
     const base = getApiBase();
-    void fetch(`${base}/credit-card-purchases?creditCardId=${encodeURIComponent(creditCardId)}`).then(async (r) => {
-      if (cancelled || !r.ok) return;
-      setPurchases((await r.json()) as PurchaseRow[]);
-    });
+    void fetch(`${base}/credit-card-purchases?creditCardId=${encodeURIComponent(creditCardId)}`).then(
+      async (response) => {
+        if (cancelled || !response.ok) return;
+        setPurchases((await response.json()) as PurchaseRow[]);
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -143,22 +148,23 @@ function PurchasesPageInner() {
   async function refreshPurchasesList(cardId: string) {
     if (!cardId) return;
     const base = getApiBase();
-    const r = await fetch(`${base}/credit-card-purchases?creditCardId=${encodeURIComponent(cardId)}`);
-    if (!r.ok) return;
-    setPurchases((await r.json()) as PurchaseRow[]);
+    const response = await fetch(`${base}/credit-card-purchases?creditCardId=${encodeURIComponent(cardId)}`);
+    if (!response.ok) return;
+    setPurchases((await response.json()) as PurchaseRow[]);
   }
 
   const computedInstallmentTotalCents = useMemo(() => {
     if (!installment) return null;
-    const n = parseInt(totalInst, 10);
-    const pc = Math.round(parseFloat(parcelValue.replace(",", ".")) * 100);
-    if (!Number.isFinite(n) || n < 1 || !Number.isFinite(pc) || pc <= 0) return null;
-    return pc * n;
+    const installmentCount = parseInt(totalInst, 10);
+    const parcelCents = Math.round(parseFloat(parcelValue.replace(",", ".")) * 100);
+    if (!Number.isFinite(installmentCount) || installmentCount < 1 || !Number.isFinite(parcelCents) || parcelCents <= 0)
+      return null;
+    return parcelCents * installmentCount;
   }, [installment, totalInst, parcelValue]);
 
   const filteredPurchases = useMemo(() => {
-    if (purchaseTab === "cash") return purchases.filter((p) => !p.isInstallmentPurchase);
-    if (purchaseTab === "installment") return purchases.filter((p) => p.isInstallmentPurchase);
+    if (purchaseTab === "cash") return purchases.filter((purchase) => !purchase.isInstallmentPurchase);
+    if (purchaseTab === "installment") return purchases.filter((purchase) => purchase.isInstallmentPurchase);
     return purchases;
   }, [purchases, purchaseTab]);
 
@@ -182,31 +188,31 @@ function PurchasesPageInner() {
 
   async function beginEdit(id: string) {
     const base = getApiBase();
-    const r = await fetch(`${base}/credit-card-purchases/${id}`);
-    if (!r.ok) {
+    const response = await fetch(`${base}/credit-card-purchases/${id}`);
+    if (!response.ok) {
       toast.error("Não foi possível carregar a compra");
       return;
     }
-    const p = (await r.json()) as PurchaseRow;
-    setEditingId(p.id);
-    setCreditCardId(p.creditCardId);
-    setCategoryId(p.categoryId);
-    setDescription(p.description);
-    if (p.isInstallmentPurchase) {
-      const per =
-        p.installmentAmountCents != null
-          ? p.installmentAmountCents
-          : Math.round(p.totalAmountCents / Math.max(1, p.totalInstallments));
-      setParcelValue((per / 100).toFixed(2).replace(".", ","));
+    const purchase = (await response.json()) as PurchaseRow;
+    setEditingId(purchase.id);
+    setCreditCardId(purchase.creditCardId);
+    setCategoryId(purchase.categoryId);
+    setDescription(purchase.description);
+    if (purchase.isInstallmentPurchase) {
+      const parcelAmountCents =
+        purchase.installmentAmountCents != null
+          ? purchase.installmentAmountCents
+          : Math.round(purchase.totalAmountCents / Math.max(1, purchase.totalInstallments));
+      setParcelValue((parcelAmountCents / 100).toFixed(2).replace(".", ","));
       setTotal("");
     } else {
       setParcelValue("");
-      setTotal((p.totalAmountCents / 100).toFixed(2).replace(".", ","));
+      setTotal((purchase.totalAmountCents / 100).toFixed(2).replace(".", ","));
     }
-    setPurchaseDate(isoDateToYmd(p.purchaseDate));
-    setInstallment(p.isInstallmentPurchase);
-    setTotalInst(String(p.totalInstallments));
-    setCurrentInst(String(p.currentInstallment));
+    setPurchaseDate(isoDateToYmd(purchase.purchaseDate));
+    setInstallment(purchase.isInstallmentPurchase);
+    setTotalInst(String(purchase.totalInstallments));
+    setCurrentInst(String(purchase.currentInstallment));
     setPreview([]);
     setCycle(null);
   }
@@ -214,11 +220,11 @@ function PurchasesPageInner() {
   async function runPreview() {
     const base = getApiBase();
     const iso = new Date(`${purchaseDate}T12:00:00.000Z`).toISOString();
-    const n = parseInt(totalInst, 10);
-    const cur = parseInt(currentInst, 10);
+    const totalInstallments = parseInt(totalInst, 10);
+    const currentInstallmentNum = parseInt(currentInst, 10);
     const parcelCents = Math.round(parseFloat(parcelValue.replace(",", ".")) * 100);
     const totalCents = Math.round(parseFloat(total.replace(",", ".")) * 100);
-    const r = await fetch(`${base}/credit-card-purchases/preview`, {
+    const response = await fetch(`${base}/credit-card-purchases/preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -227,49 +233,49 @@ function PurchasesPageInner() {
         totalAmountCents: installment ? 0 : totalCents,
         installmentAmountCents: installment && parcelCents > 0 ? parcelCents : undefined,
         isInstallmentPurchase: installment,
-        totalInstallments: n,
-        currentInstallment: cur,
+        totalInstallments,
+        currentInstallment: currentInstallmentNum,
       }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Falha no preview");
       return;
     }
-    const j = (await r.json()) as { preview: PreviewRow[] };
-    setPreview(j.preview);
+    const previewPayload = (await response.json()) as { preview: PreviewRow[] };
+    setPreview(previewPayload.preview);
   }
 
   async function runEstimate() {
     const base = getApiBase();
     const iso = new Date(`${purchaseDate}T12:00:00.000Z`).toISOString();
     const instNum = installment ? parseInt(currentInst, 10) || 1 : 1;
-    const r = await fetch(`${base}/credit-cards/estimate-cycle`, {
+    const response = await fetch(`${base}/credit-cards/estimate-cycle`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ creditCardId, purchaseDate: iso, installmentNumber: instNum }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Falha no ciclo");
       return;
     }
-    const j = (await r.json()) as {
+    const cyclePayload = (await response.json()) as {
       referenceMonth: string;
       closingDate: string;
       dueDate: string;
       installmentNumber: number;
     };
     setCycle(
-      `${formatStatementRefDisplay(j.referenceMonth)} | Fecha ${formatDateDdMmYyyy(j.closingDate)} | Vence ${formatDateDdMmYyyy(j.dueDate)}`,
+      `${formatStatementRefDisplay(cyclePayload.referenceMonth)} | Fecha ${formatDateDdMmYyyy(cyclePayload.closingDate)} | Vence ${formatDateDdMmYyyy(cyclePayload.dueDate)}`,
     );
-    toast.success(`Parcela ${j.installmentNumber}: vence ${formatDateDdMmYyyy(j.dueDate)}`);
+    toast.success(`Parcela ${cyclePayload.installmentNumber}: vence ${formatDateDdMmYyyy(cyclePayload.dueDate)}`);
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const iso = new Date(`${purchaseDate}T12:00:00.000Z`).toISOString();
     const base = getApiBase();
-    const n = parseInt(totalInst, 10);
-    const cur = parseInt(currentInst, 10);
+    const totalInstallments = parseInt(totalInst, 10);
+    const currentInstallmentNum = parseInt(currentInst, 10);
     const parcelCents = Math.round(parseFloat(parcelValue.replace(",", ".")) * 100);
     const totalCents = Math.round(parseFloat(total.replace(",", ".")) * 100);
     if (installment && (!Number.isFinite(parcelCents) || parcelCents <= 0)) {
@@ -287,20 +293,20 @@ function PurchasesPageInner() {
       totalAmountCents: installment ? 0 : totalCents,
       installmentAmountCents: installment && parcelCents > 0 ? parcelCents : undefined,
       isInstallmentPurchase: installment,
-      totalInstallments: n,
-      currentInstallment: cur,
+      totalInstallments,
+      currentInstallment: currentInstallmentNum,
     };
 
     if (editingId) {
-      const r = await fetch(`${base}/credit-card-purchases/${editingId}`, {
+      const patchResponse = await fetch(`${base}/credit-card-purchases/${editingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!r.ok) {
+      if (!patchResponse.ok) {
         try {
-          const j = (await r.json()) as { message?: string };
-          toast.error(j.message ?? "Erro ao atualizar compra");
+          const errorBody = (await patchResponse.json()) as { message?: string };
+          toast.error(errorBody.message ?? "Erro ao atualizar compra");
         } catch {
           toast.error("Erro ao atualizar compra");
         }
@@ -312,12 +318,12 @@ function PurchasesPageInner() {
       return;
     }
 
-    const r = await fetch(`${base}/credit-card-purchases`, {
+    const createResponse = await fetch(`${base}/credit-card-purchases`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ creditCardId, ...body }),
     });
-    if (!r.ok) {
+    if (!createResponse.ok) {
       toast.error("Erro ao registrar compra");
       return;
     }
@@ -347,9 +353,9 @@ function PurchasesPageInner() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {cards.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
+                    {cards.map((card) => (
+                      <SelectItem key={card.id} value={card.id}>
+                        {card.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -363,9 +369,9 @@ function PurchasesPageInner() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {cats.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
+                    {cats.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -475,17 +481,17 @@ function PurchasesPageInner() {
               </div>
               {preview.length > 0 ? (
                 <ul className="space-y-2.5">
-                  {preview.map((p) => (
+                  {preview.map((row) => (
                     <li
-                      key={`${p.installmentNumber}-${p.referenceMonth}`}
+                      key={`${row.installmentNumber}-${row.referenceMonth}`}
                       className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm shadow-sm"
                     >
                       <span className="text-muted-foreground">
-                        Parcela {p.installmentNumber}
+                        Parcela {row.installmentNumber}
                         <span className="mx-1.5 text-muted-foreground/60">·</span>
-                        {p.dueDate ? formatDateDdMmYyyy(p.dueDate) : formatStatementRefDisplay(p.referenceMonth)}
+                        {row.dueDate ? formatDateDdMmYyyy(row.dueDate) : formatStatementRefDisplay(row.referenceMonth)}
                       </span>
-                      <span className="font-semibold tabular-nums text-foreground">{formatBRLFromCents(p.amountCents)}</span>
+                      <span className="font-semibold tabular-nums text-foreground">{formatBRLFromCents(row.amountCents)}</span>
                     </li>
                   ))}
                 </ul>
@@ -530,23 +536,25 @@ function PurchasesPageInner() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredPurchases.map((p) => (
-                        <TableRow key={p.id}>
-                          <TableCell>{formatDateDdMmYyyy(p.purchaseDate)}</TableCell>
-                          <TableCell className="font-medium">{p.description}</TableCell>
-                          <TableCell>{cats.find((c) => c.id === p.categoryId)?.name ?? "—"}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatBRLFromCents(p.totalAmountCents)}</TableCell>
+                      {filteredPurchases.map((purchase) => (
+                        <TableRow key={purchase.id}>
+                          <TableCell>{formatDateDdMmYyyy(purchase.purchaseDate)}</TableCell>
+                          <TableCell className="font-medium">{purchase.description}</TableCell>
                           <TableCell>
-                            {p.isInstallmentPurchase ? (
+                            {cats.find((category) => category.id === purchase.categoryId)?.name ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{formatBRLFromCents(purchase.totalAmountCents)}</TableCell>
+                          <TableCell>
+                            {purchase.isInstallmentPurchase ? (
                               <Badge variant="secondary">
-                                {p.currentInstallment}/{p.totalInstallments}
+                                {purchase.currentInstallment}/{purchase.totalInstallments}
                               </Badge>
                             ) : (
                               <Badge variant="outline">À vista</Badge>
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button type="button" variant="outline" size="sm" onClick={() => void beginEdit(p.id)}>
+                            <Button type="button" variant="outline" size="sm" onClick={() => void beginEdit(purchase.id)}>
                               Editar
                             </Button>
                           </TableCell>

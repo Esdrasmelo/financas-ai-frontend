@@ -41,17 +41,17 @@ export default function CategoriesPage() {
 
   async function refreshList() {
     const base = getApiBase();
-    const r = await fetch(`${base}/categories`);
-    if (r.ok) setList((await r.json()) as Category[]);
+    const response = await fetch(`${base}/categories`);
+    if (response.ok) setList((await response.json()) as Category[]);
   }
 
   useEffect(() => {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const r = await fetch(`${base}/categories`);
-      if (cancelled || !r.ok) return;
-      setList((await r.json()) as Category[]);
+      const response = await fetch(`${base}/categories`);
+      if (cancelled || !response.ok) return;
+      setList((await response.json()) as Category[]);
     })();
     return () => {
       cancelled = true;
@@ -59,20 +59,20 @@ export default function CategoriesPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((c) => c.name.toLowerCase().includes(q));
+    const query = search.trim().toLowerCase();
+    if (!query) return list;
+    return list.filter((category) => category.name.toLowerCase().includes(query));
   }, [list, search]);
 
   async function createCat(e: React.FormEvent) {
     e.preventDefault();
     const base = getApiBase();
-    const r = await fetch(`${base}/categories`, {
+    const response = await fetch(`${base}/categories`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, type: "expense" }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Erro ao criar categoria");
       return;
     }
@@ -83,8 +83,8 @@ export default function CategoriesPage() {
 
   async function remove(id: string) {
     const base = getApiBase();
-    const r = await fetch(`${base}/categories/${id}`, { method: "DELETE" });
-    if (!r.ok) {
+    const response = await fetch(`${base}/categories/${id}`, { method: "DELETE" });
+    if (!response.ok) {
       toast.error("Não foi possível excluir (pode haver vínculos)");
       return;
     }
@@ -154,11 +154,11 @@ export default function CategoriesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium text-foreground">{c.name}</TableCell>
+                {filtered.map((category) => (
+                  <TableRow key={category.id}>
+                    <TableCell className="font-medium text-foreground">{category.name}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{c.type}</Badge>
+                      <Badge variant="secondary">{category.type}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
@@ -168,7 +168,7 @@ export default function CategoriesPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(c.id)}>
+                          <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(category.id)}>
                             Excluir
                           </DropdownMenuItem>
                         </DropdownMenuContent>

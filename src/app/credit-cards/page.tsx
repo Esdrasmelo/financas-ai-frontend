@@ -48,25 +48,25 @@ export default function CreditCardsPage() {
 
   async function refresh() {
     const base = getApiBase();
-    const [r1, r2] = await Promise.all([
+    const [cardsListResponse, overviewResponse] = await Promise.all([
       fetch(`${base}/credit-cards`),
       fetch(`${base}/dashboard/credit-cards-overview`),
     ]);
-    if (r1.ok) setList((await r1.json()) as CardRow[]);
-    if (r2.ok) setOverview((await r2.json()) as Overview[]);
+    if (cardsListResponse.ok) setList((await cardsListResponse.json()) as CardRow[]);
+    if (overviewResponse.ok) setOverview((await overviewResponse.json()) as Overview[]);
   }
 
   useEffect(() => {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const [r1, r2] = await Promise.all([
+      const [cardsListResponse, overviewResponse] = await Promise.all([
         fetch(`${base}/credit-cards`),
         fetch(`${base}/dashboard/credit-cards-overview`),
       ]);
       if (cancelled) return;
-      if (r1.ok) setList((await r1.json()) as CardRow[]);
-      if (r2.ok) setOverview((await r2.json()) as Overview[]);
+      if (cardsListResponse.ok) setList((await cardsListResponse.json()) as CardRow[]);
+      if (overviewResponse.ok) setOverview((await overviewResponse.json()) as Overview[]);
     })();
     return () => {
       cancelled = true;
@@ -77,7 +77,7 @@ export default function CreditCardsPage() {
     e.preventDefault();
     const limitCents = limit.trim() === "" ? null : Math.round(parseFloat(limit.replace(",", ".")) * 100);
     const base = getApiBase();
-    const r = await fetch(`${base}/credit-cards`, {
+    const response = await fetch(`${base}/credit-cards`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -88,7 +88,7 @@ export default function CreditCardsPage() {
         brand: null,
       }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Erro ao salvar");
       return;
     }
@@ -141,10 +141,10 @@ export default function CreditCardsPage() {
           <p className="text-sm text-muted-foreground">Cadastre um cartão para ver uso e limite.</p>
         ) : (
           <div className="grid gap-5 sm:grid-cols-1 lg:grid-cols-2">
-            {overview.map((c) => (
+            {overview.map((cardOverview) => (
               <Link
-                key={c.creditCardId}
-                href={`/credit-cards/${c.creditCardId}`}
+                key={cardOverview.creditCardId}
+                href={`/credit-cards/${cardOverview.creditCardId}`}
                 className="block rounded-2xl transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Card className="h-full">
@@ -154,34 +154,41 @@ export default function CreditCardsPage() {
                       <CreditCard className="h-6 w-6" />
                     </span>
                     <div className="min-w-0 flex-1 space-y-1">
-                      <p className="text-lg font-semibold leading-snug text-foreground">{c.name}</p>
+                      <p className="text-lg font-semibold leading-snug text-foreground">{cardOverview.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        Limite {c.limitCents != null ? formatBRLFromCents(c.limitCents) : "não informado"}
+                        Limite{" "}
+                        {cardOverview.limitCents != null ? formatBRLFromCents(cardOverview.limitCents) : "não informado"}
                       </p>
                     </div>
                   </div>
-                  {c.limitCents != null && c.limitCents > 0 && c.utilizationPercent != null ? (
+                  {cardOverview.limitCents != null &&
+                  cardOverview.limitCents > 0 &&
+                  cardOverview.utilizationPercent != null ? (
                     <div className="space-y-3 rounded-xl border border-border/80 bg-muted/30 px-4 py-4">
                       <div className="flex justify-between gap-3 text-sm text-muted-foreground">
                         <span>Uso do limite</span>
-                        <span className="tabular-nums font-semibold text-foreground">{c.utilizationPercent.toFixed(0)}%</span>
+                        <span className="tabular-nums font-semibold text-foreground">
+                          {cardOverview.utilizationPercent.toFixed(0)}%
+                        </span>
                       </div>
-                      <Progress value={c.utilizationPercent} className="h-2.5" />
+                      <Progress value={cardOverview.utilizationPercent} className="h-2.5" />
                       <p className="text-sm leading-relaxed text-muted-foreground">
-                        Em aberto: <MoneyValue cents={c.usedCents} className="text-sm font-semibold text-foreground" />
+                        Em aberto:{" "}
+                        <MoneyValue cents={cardOverview.usedCents} className="text-sm font-semibold text-foreground" />
                       </p>
                     </div>
                   ) : (
                     <div className="rounded-xl border border-border/80 bg-muted/30 px-4 py-4">
                       <p className="text-sm leading-relaxed text-muted-foreground">
-                        Pendências: <MoneyValue cents={c.usedCents} className="font-semibold text-foreground" />
+                        Pendências:{" "}
+                        <MoneyValue cents={cardOverview.usedCents} className="font-semibold text-foreground" />
                       </p>
                     </div>
                   )}
-                  {c.nextStatementCents != null && (
+                  {cardOverview.nextStatementCents != null && (
                     <p className="text-sm leading-relaxed text-muted-foreground">
                       Próxima fatura (pendente):{" "}
-                      <MoneyValue cents={c.nextStatementCents} className="text-sm font-medium text-foreground" />
+                      <MoneyValue cents={cardOverview.nextStatementCents} className="text-sm font-medium text-foreground" />
                     </p>
                   )}
                 </CardContent>
@@ -204,17 +211,17 @@ export default function CreditCardsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {list.map((c) => (
+              {list.map((card) => (
                 <TableRow
-                  key={c.id}
+                  key={card.id}
                   className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => router.push(`/credit-cards/${c.id}`)}
+                  onClick={() => router.push(`/credit-cards/${card.id}`)}
                 >
-                  <TableCell className="font-medium">{c.name}</TableCell>
-                  <TableCell>{c.closingDay}</TableCell>
-                  <TableCell>{c.dueDay}</TableCell>
+                  <TableCell className="font-medium">{card.name}</TableCell>
+                  <TableCell>{card.closingDay}</TableCell>
+                  <TableCell>{card.dueDay}</TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {c.limitCents != null ? formatBRLFromCents(c.limitCents) : "—"}
+                    {card.limitCents != null ? formatBRLFromCents(card.limitCents) : "—"}
                   </TableCell>
                 </TableRow>
               ))}

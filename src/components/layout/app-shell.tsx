@@ -44,18 +44,18 @@ export function AppShell({
             <span className="text-base font-semibold tracking-tight">Finanças AI</span>
           </Link>
           <nav className="flex flex-wrap items-center gap-1">
-            {links.map((l) => {
-              const isActive = navLinkActive(l.href, pathname);
+            {links.map((link) => {
+              const isActive = navLinkActive(link.href, pathname);
               return (
                 <Link
-                  key={l.href}
-                  href={l.href}
+                  key={link.href}
+                  href={link.href}
                   className={cn(
                     "rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground",
                     isActive && "bg-primary/10 font-medium text-foreground",
                   )}
                 >
-                  {l.label}
+                  {link.label}
                 </Link>
               );
             })}

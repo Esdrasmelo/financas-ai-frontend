@@ -40,15 +40,19 @@ export default function FixedExpensesPage() {
   const [genMonth, setGenMonth] = useState(currentCompetencyMonth());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [categorySavingId, setCategorySavingId] = useState<string | null>(null);
 
   async function refreshFixed() {
     const base = getApiBase();
-    const [f, c] = await Promise.all([fetch(`${base}/fixed-expenses`), fetch(`${base}/categories`)]);
-    if (f.ok) setList((await f.json()) as Fixed[]);
-    if (c.ok) {
-      const cl = (await c.json()) as Category[];
-      setCats(cl);
-      setCategoryId((prev) => prev || (cl[0]?.id ?? ""));
+    const [fixedResponse, categoriesResponse] = await Promise.all([
+      fetch(`${base}/fixed-expenses`),
+      fetch(`${base}/categories`),
+    ]);
+    if (fixedResponse.ok) setList((await fixedResponse.json()) as Fixed[]);
+    if (categoriesResponse.ok) {
+      const categoriesJson = (await categoriesResponse.json()) as Category[];
+      setCats(categoriesJson);
+      setCategoryId((prev) => prev || (categoriesJson[0]?.id ?? ""));
     }
   }
 
@@ -56,13 +60,16 @@ export default function FixedExpensesPage() {
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const [f, c] = await Promise.all([fetch(`${base}/fixed-expenses`), fetch(`${base}/categories`)]);
+      const [fixedResponse, categoriesResponse] = await Promise.all([
+        fetch(`${base}/fixed-expenses`),
+        fetch(`${base}/categories`),
+      ]);
       if (cancelled) return;
-      if (f.ok) setList((await f.json()) as Fixed[]);
-      if (c.ok) {
-        const cl = (await c.json()) as Category[];
-        setCats(cl);
-        setCategoryId((prev) => prev || (cl[0]?.id ?? ""));
+      if (fixedResponse.ok) setList((await fixedResponse.json()) as Fixed[]);
+      if (categoriesResponse.ok) {
+        const categoriesJson = (await categoriesResponse.json()) as Category[];
+        setCats(categoriesJson);
+        setCategoryId((prev) => prev || (categoriesJson[0]?.id ?? ""));
       }
     })();
     return () => {
@@ -72,12 +79,17 @@ export default function FixedExpensesPage() {
 
   const filtered = useMemo(() => {
     let rows = list;
-    if (statusFilter === "active") rows = rows.filter((x) => x.isActive);
-    if (statusFilter === "inactive") rows = rows.filter((x) => !x.isActive);
-    const q = search.trim().toLowerCase();
-    if (q) rows = rows.filter((x) => x.name.toLowerCase().includes(q));
+    if (statusFilter === "active") rows = rows.filter((row) => row.isActive);
+    if (statusFilter === "inactive") rows = rows.filter((row) => !row.isActive);
+    const query = search.trim().toLowerCase();
+    if (query) rows = rows.filter((row) => row.name.toLowerCase().includes(query));
     return rows;
   }, [list, search, statusFilter]);
+
+  const totalFilteredCents = useMemo(
+    () => filtered.reduce((sum, row) => sum + row.amountCents, 0),
+    [filtered],
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,7 +99,7 @@ export default function FixedExpensesPage() {
       return;
     }
     const base = getApiBase();
-    const r = await fetch(`${base}/fixed-expenses`, {
+    const response = await fetch(`${base}/fixed-expenses`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -99,7 +111,7 @@ export default function FixedExpensesPage() {
         description: null,
       }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Erro ao salvar");
       return;
     }
@@ -112,8 +124,8 @@ export default function FixedExpensesPage() {
 
   async function disable(id: string) {
     const base = getApiBase();
-    const r = await fetch(`${base}/fixed-expenses/${id}/disable`, { method: "PATCH" });
-    if (!r.ok) {
+    const response = await fetch(`${base}/fixed-expenses/${id}/disable`, { method: "PATCH" });
+    if (!response.ok) {
       toast.error("Erro");
       return;
     }
@@ -121,19 +133,39 @@ export default function FixedExpensesPage() {
     void refreshFixed();
   }
 
+  async function changeFixedCategory(fixedId: string, newCategoryId: string) {
+    const base = getApiBase();
+    setCategorySavingId(fixedId);
+    try {
+      const response = await fetch(`${base}/fixed-expenses/${fixedId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoryId: newCategoryId }),
+      });
+      if (!response.ok) {
+        toast.error("Erro ao atualizar categoria");
+        return;
+      }
+      toast.success("Categoria atualizada");
+      await refreshFixed();
+    } finally {
+      setCategorySavingId(null);
+    }
+  }
+
   async function generate() {
     const base = getApiBase();
-    const r = await fetch(`${base}/fixed-expenses/generate-monthly-entries`, {
+    const response = await fetch(`${base}/fixed-expenses/generate-monthly-entries`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ competencyMonth: genMonth }),
     });
-    if (!r.ok) {
+    if (!response.ok) {
       toast.error("Erro na geração");
       return;
     }
-    const j = (await r.json()) as { createdCount: number; skippedCount: number };
-    toast.success(`Gerados: ${j.createdCount}, ignorados: ${j.skippedCount}`);
+    const generationResult = (await response.json()) as { createdCount: number; skippedCount: number };
+    toast.success(`Gerados: ${generationResult.createdCount}, ignorados: ${generationResult.skippedCount}`);
     void refreshFixed();
   }
 
@@ -176,9 +208,9 @@ export default function FixedExpensesPage() {
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
-                  {cats.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
+                  {cats.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -215,6 +247,7 @@ export default function FixedExpensesPage() {
 
       <SectionCard
         title="Contas cadastradas"
+        description={`${filtered.length} exibida${filtered.length !== 1 ? "s" : ""} · Soma dos valores listados: ${formatBRLFromCents(totalFilteredCents)}`}
         action={
           <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative min-w-[180px] flex-1">
@@ -254,27 +287,53 @@ export default function FixedExpensesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((x) => (
-                <TableRow key={x.id}>
-                  <TableCell className="font-medium">{x.name}</TableCell>
-                  <TableCell>{formatBRLFromCents(x.amountCents)}</TableCell>
+              {filtered.map((expense) => (
+                <TableRow key={expense.id}>
+                  <TableCell className="font-medium">{expense.name}</TableCell>
+                  <TableCell>{formatBRLFromCents(expense.amountCents)}</TableCell>
                   <TableCell>
-                    {x.isVariableAmount === true ? (
+                    {expense.isVariableAmount === true ? (
                       <Badge variant="warning">Variável</Badge>
                     ) : (
                       <Badge variant="secondary">Fixo</Badge>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{cats.find((c) => c.id === x.categoryId)?.name ?? "—"}</Badge>
+                  <TableCell className="min-w-[12rem]">
+                    {cats.length === 0 ? (
+                      <Badge variant="outline">—</Badge>
+                    ) : (
+                      <Select
+                        value={expense.categoryId}
+                        disabled={categorySavingId === expense.id}
+                        onValueChange={(newId) => {
+                          if (newId === expense.categoryId) return;
+                          void changeFixedCategory(expense.id, newId);
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-full max-w-[220px]">
+                          <SelectValue placeholder="Categoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cats.map((category) => (
+                            <SelectItem key={category.id} value={category.id}>
+                              {category.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </TableCell>
-                  <TableCell>{x.dueDay}</TableCell>
+                  <TableCell>{expense.dueDay}</TableCell>
                   <TableCell>
-                    {x.isActive ? <StatusBadge variant="active">Ativa</StatusBadge> : <StatusBadge variant="inactive">Inativa</StatusBadge>}
+                    {expense.isActive ? (
+                      <StatusBadge variant="active">Ativa</StatusBadge>
+                    ) : (
+                      <StatusBadge variant="inactive">Inativa</StatusBadge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {x.isActive && (
-                      <Button type="button" variant="outline" size="sm" onClick={() => void disable(x.id)}>
+                    {expense.isActive && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => void disable(expense.id)}>
                         Desativar
                       </Button>
                     )}
