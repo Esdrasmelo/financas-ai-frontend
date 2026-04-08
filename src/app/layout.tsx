@@ -3,7 +3,7 @@ import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
 import { AppToaster } from "@/components/providers/app-toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppRootProviders } from "@/components/providers/app-root-providers";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -32,9 +32,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
-        <TooltipProvider delayDuration={200}>
+        <AppRootProviders>
           <AppShell>{children}</AppShell>
-        </TooltipProvider>
+        </AppRootProviders>
         <AppToaster />
       </body>
     </html>

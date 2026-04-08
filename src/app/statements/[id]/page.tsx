@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -22,6 +22,17 @@ import { Badge } from "@/components/ui/badge";
 import { CategoryDonutTooltip } from "@/components/dashboard/category-donut-tooltip";
 import { chartSeriesColorsFromTheme } from "@/lib/chart-theme";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { CreditCardPurchaseForm } from "@/components/credit-card-purchase-form";
 
 type Detail = {
   statement: {
@@ -45,6 +56,7 @@ type Detail = {
   }[];
   installments: {
     id: string;
+    purchaseId: string;
     installmentNumber: number;
     totalInstallments: number;
     amountCents: number;
@@ -81,6 +93,10 @@ export default function StatementDetailPage() {
   const [creditCardThemeColor, setCreditCardThemeColor] = useState<string | null>(null);
   const [cards, setCards] = useState<CreditCardOption[]>([]);
   const [cardSwitchLoading, setCardSwitchLoading] = useState(false);
+  const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false);
+  const [modalEditingPurchaseId, setModalEditingPurchaseId] = useState<string | null>(null);
+  const [deletePurchaseId, setDeletePurchaseId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +156,36 @@ export default function StatementDetailPage() {
     };
   }, [data?.statement.creditCardId]);
 
+  async function reloadStatement() {
+    const base = getApiBase();
+    const response = await fetch(`${base}/statements/${id}`);
+    if (!response.ok) return;
+    setData((await response.json()) as Detail);
+  }
+
+  async function confirmDeletePurchase() {
+    if (!deletePurchaseId) return;
+    setDeleteLoading(true);
+    try {
+      const base = getApiBase();
+      const response = await fetch(`${base}/credit-card-purchases/${deletePurchaseId}`, { method: "DELETE" });
+      if (!response.ok) {
+        try {
+          const body = (await response.json()) as { message?: string };
+          toast.error(body.message ?? "Não foi possível excluir a compra");
+        } catch {
+          toast.error("Não foi possível excluir a compra");
+        }
+        return;
+      }
+      toast.success("Compra excluída");
+      setDeletePurchaseId(null);
+      await reloadStatement();
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   async function onCardChange(newCardId: string) {
     if (!data || newCardId === data.statement.creditCardId) return;
     const refMonth = data.statement.referenceMonth;
@@ -198,11 +244,6 @@ export default function StatementDetailPage() {
     );
   }
 
-  const purchaseQuery = new URLSearchParams({
-    creditCardId: data.statement.creditCardId,
-    statementId: data.statement.id,
-  }).toString();
-
   return (
     <div className="space-y-6 sm:space-y-8">
       <div className="flex flex-wrap items-center gap-3">
@@ -237,13 +278,70 @@ export default function StatementDetailPage() {
             </Button>
           )}
         </div>
-        <Button className="ml-auto" asChild>
-          <Link href={`/purchases?${purchaseQuery}`}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nova compra nesta fatura
-          </Link>
+        <Button
+          className="ml-auto"
+          type="button"
+          onClick={() => {
+            setModalEditingPurchaseId(null);
+            setPurchaseDialogOpen(true);
+          }}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Nova compra nesta fatura
         </Button>
       </div>
+
+      <Dialog
+        open={purchaseDialogOpen}
+        onOpenChange={(open) => {
+          setPurchaseDialogOpen(open);
+          if (!open) setModalEditingPurchaseId(null);
+        }}
+      >
+        <DialogContent className="max-h-[min(90vh,880px)] w-[calc(100%-2rem)] max-w-5xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{modalEditingPurchaseId ? "Editar compra" : "Nova compra nesta fatura"}</DialogTitle>
+          </DialogHeader>
+          {purchaseDialogOpen ? (
+            <CreditCardPurchaseForm
+              variant="modal"
+              key={modalEditingPurchaseId ?? "new"}
+              initialCreditCardId={data.statement.creditCardId}
+              statementId={modalEditingPurchaseId ? undefined : data.statement.id}
+              editingPurchaseId={modalEditingPurchaseId}
+              onCancelEdit={() => setModalEditingPurchaseId(null)}
+              onSaved={() => {
+                void reloadStatement();
+                setPurchaseDialogOpen(false);
+                setModalEditingPurchaseId(null);
+              }}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deletePurchaseId !== null} onOpenChange={(open) => !open && setDeletePurchaseId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir compra?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Todas as parcelas desta compra serão removidas das faturas (incluindo outras competências), desde que nenhuma
+              parcela esteja em fatura paga.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Cancelar</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteLoading}
+              onClick={() => void confirmDeletePurchase()}
+            >
+              {deleteLoading ? "Excluindo…" : "Excluir"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <PageHeader
         title={`Fatura ${formatStatementRefDisplay(data.statement.referenceMonth)}`}
@@ -379,6 +477,7 @@ export default function StatementDetailPage() {
                   <TableHead>Parcela</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="w-[1%] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -394,6 +493,35 @@ export default function StatementDetailPage() {
                     <TableCell className="text-right tabular-nums">{formatBRLFromCents(installment.amountCents)}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{installmentStatusLabel(installment.status)}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Editar compra"
+                          onClick={() => {
+                            setModalEditingPurchaseId(installment.purchaseId);
+                            setPurchaseDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          <span className="sr-only">Editar compra</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          title="Excluir compra"
+                          onClick={() => setDeletePurchaseId(installment.purchaseId)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Excluir compra</span>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
