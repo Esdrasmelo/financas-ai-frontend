@@ -8,7 +8,8 @@ import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PlanningCalculatorTab } from "@/components/planning/planning-calculator-tab";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DataTable } from "@/components/shared/data-table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -62,6 +63,7 @@ function parseMoneyToCents(raw: string): number | null {
 }
 
 export default function PlanningPage() {
+  const [mainTab, setMainTab] = useState<"planning" | "calculator">("planning");
   const [month, setMonth] = useState(currentCompetencyMonth());
   const [view, setView] = useState<"payment" | "occurrence">("payment");
   const [data, setData] = useState<BudgetMonthResponse | null>(null);
@@ -247,29 +249,36 @@ export default function PlanningPage() {
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
         title="Planejamento mensal"
-        subtitle="Renda (salário + recebimentos), gastos do app, sobra, poupança e simulação rápida sem salvar"
+        subtitle="Orçamento do mês na primeira aba; calculadora com inclusão opcional de contas fixas e faturas na segunda."
       />
 
-      <div className="flex max-w-2xl flex-col gap-3">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="plan-month">Mês (YYYY-MM)</Label>
-            <Input id="plan-month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-40" />
-          </div>
-          <Tabs value={view} onValueChange={(v) => setView(v as "payment" | "occurrence")}>
-            <TabsList>
-              <TabsTrigger value="payment">Pagamento</TabsTrigger>
-              <TabsTrigger value="occurrence">Ocorrência</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-        <CompetencyViewTip />
-      </div>
+      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "planning" | "calculator")} className="w-full">
+        <TabsList className="h-auto min-h-10 w-full flex-wrap justify-start sm:w-auto">
+          <TabsTrigger value="planning">Planejamento</TabsTrigger>
+          <TabsTrigger value="calculator">Calculadora</TabsTrigger>
+        </TabsList>
 
-      {loading && !data ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
-      ) : data ? (
-        <>
+        <TabsContent value="planning" className="mt-6 space-y-6 sm:space-y-8">
+          <div className="flex max-w-2xl flex-col gap-3">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="plan-month">Mês (YYYY-MM)</Label>
+                <Input id="plan-month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-40" />
+              </div>
+              <Tabs value={view} onValueChange={(v) => setView(v as "payment" | "occurrence")}>
+                <TabsList>
+                  <TabsTrigger value="payment">Pagamento</TabsTrigger>
+                  <TabsTrigger value="occurrence">Ocorrência</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+            <CompetencyViewTip />
+          </div>
+
+          {loading && !data ? (
+            <p className="text-sm text-muted-foreground">Carregando…</p>
+          ) : data ? (
+            <>
           <SectionCard
             title="Renda do mês"
             description="Salário principal (opcional) + outros recebimentos que você quiser registrar ao longo do mês"
@@ -527,8 +536,14 @@ export default function PlanningPage() {
               </DataTable>
             )}
           </SectionCard>
-        </>
-      ) : null}
+            </>
+          ) : null}
+        </TabsContent>
+
+        <TabsContent value="calculator" className="mt-6">
+          <PlanningCalculatorTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
