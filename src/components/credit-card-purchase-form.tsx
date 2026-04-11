@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Calendar, Lightbulb, ListOrdered, Sparkles } from "lucide-react";
-import { getApiBase } from "@/lib/api";
+import { getApiBase, authFetch } from "@/lib/api";
 import { formatBRLFromCents } from "@/lib/money";
 import { PurchaseDatePicker } from "@/components/purchase-date-picker";
 import { formatDateDdMmYyyy, formatStatementRefDisplay } from "@/lib/date";
@@ -81,8 +81,8 @@ export function CreditCardPurchaseForm({
     const base = getApiBase();
     void (async () => {
       const [categoriesResponse, cardsResponse] = await Promise.all([
-        fetch(`${base}/categories`),
-        fetch(`${base}/credit-cards`),
+        authFetch(`${base}/categories`),
+        authFetch(`${base}/credit-cards`),
       ]);
       if (cancelled) return;
       if (categoriesResponse.ok) {
@@ -121,7 +121,7 @@ export function CreditCardPurchaseForm({
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const response = await fetch(`${base}/statements/${statementId}`);
+      const response = await authFetch(`${base}/statements/${statementId}`);
       if (cancelled || !response.ok) return;
       const detail = (await response.json()) as {
         statement: { creditCardId: string; periodEnd: string; referenceMonth: string };
@@ -142,7 +142,7 @@ export function CreditCardPurchaseForm({
     let cancelled = false;
     const base = getApiBase();
     void (async () => {
-      const response = await fetch(`${base}/credit-card-purchases/${editingPurchaseId}`);
+      const response = await authFetch(`${base}/credit-card-purchases/${editingPurchaseId}`);
       if (cancelled || !response.ok) {
         if (!cancelled && !response.ok) toast.error("Não foi possível carregar a compra");
         return;
@@ -232,7 +232,7 @@ export function CreditCardPurchaseForm({
       toast.error("Informe o valor total");
       return;
     }
-    const response = await fetch(`${base}/credit-card-purchases/preview`, {
+    const response = await authFetch(`${base}/credit-card-purchases/preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -266,7 +266,7 @@ export function CreditCardPurchaseForm({
     const base = getApiBase();
     const iso = new Date(`${purchaseDate}T12:00:00.000Z`).toISOString();
     const instNum = installment ? parseInt(currentInst, 10) || 1 : 1;
-    const response = await fetch(`${base}/credit-cards/estimate-cycle`, {
+    const response = await authFetch(`${base}/credit-cards/estimate-cycle`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ creditCardId, purchaseDate: iso, installmentNumber: instNum }),
@@ -320,7 +320,7 @@ export function CreditCardPurchaseForm({
     };
 
     if (editingPurchaseId) {
-      const patchResponse = await fetch(`${base}/credit-card-purchases/${editingPurchaseId}`, {
+      const patchResponse = await authFetch(`${base}/credit-card-purchases/${editingPurchaseId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -341,7 +341,7 @@ export function CreditCardPurchaseForm({
       return;
     }
 
-    const createResponse = await fetch(`${base}/credit-card-purchases`, {
+    const createResponse = await authFetch(`${base}/credit-card-purchases`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ creditCardId, ...body }),
