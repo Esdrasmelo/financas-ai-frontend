@@ -2,7 +2,7 @@
 
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatBRLFromCents } from "@/lib/money";
-import { CHART_SERIES_COLORS } from "@/lib/chart-theme";
+import { getChartPrimaryColor } from "@/lib/chart-theme";
 
 type Row = { month: string; label: string; totalCents: number };
 
@@ -41,7 +41,7 @@ export function MonthlyTrendChart({ data }: { data: Row[] }) {
             }
           />
           <Tooltip content={<TrendTooltip />} cursor={{ fill: "var(--muted)", opacity: 0.15 }} />
-          <Bar dataKey="totalCents" fill={CHART_SERIES_COLORS[0]} radius={[6, 6, 0, 0]} maxBarSize={48} />
+          <Bar dataKey="totalCents" fill={getChartPrimaryColor()} radius={[6, 6, 0, 0]} maxBarSize={48} />
         </BarChart>
       </ResponsiveContainer>
     </div>

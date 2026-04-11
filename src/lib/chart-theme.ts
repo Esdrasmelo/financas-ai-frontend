@@ -1,12 +1,28 @@
-/** Paleta discreta (verdes acinzentados) — guia de redesign. */
-export const CHART_SERIES_COLORS = [
+const DEFAULT_SERIES = [
   "#1F4B46",
   "#2D625B",
   "#4C7B74",
   "#6A958F",
   "#8CB1AA",
   "#B7D1CB",
-] as const;
+];
+
+export function getChartSeriesColors(): string[] {
+  if (typeof document === "undefined") return DEFAULT_SERIES;
+  const primary = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
+  if (!primary || !/^#[0-9A-Fa-f]{6}$/.test(primary)) return DEFAULT_SERIES;
+  return chartSeriesColorsFromTheme(primary, 6);
+}
+
+export function getChartPrimaryColor(): string {
+  if (typeof document === "undefined") return DEFAULT_SERIES[0];
+  const primary = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
+  if (!primary || !/^#[0-9A-Fa-f]{6}$/.test(primary)) return DEFAULT_SERIES[0];
+  return primary;
+}
+
+/** @deprecated Use getChartSeriesColors() instead */
+export const CHART_SERIES_COLORS = DEFAULT_SERIES;
 
 export const CHART_NEUTRAL_COLORS = ["#374151", "#4B5563", "#6B7280", "#9CA3AF"] as const;
 

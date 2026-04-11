@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { AppShell } from "@/components/layout/app-shell";
 import { AppToaster } from "@/components/providers/app-toaster";
 import { AppRootProviders } from "@/components/providers/app-root-providers";
 
@@ -16,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finanças AI",
+  title: "Prisma | Finanças",
   description: "Gestão financeira pessoal local-first",
 };
 
@@ -33,7 +32,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         <AppRootProviders>
-          <AppShell>{children}</AppShell>
+          {children}
         </AppRootProviders>
         <AppToaster />
       </body>

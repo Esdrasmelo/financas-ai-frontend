@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { getApiBase } from "@/lib/api";
+import { getApiBase, authFetch } from "@/lib/api";
 import { currentCompetencyMonth, formatBRLFromCents } from "@/lib/money";
 
 type Fixed = {
@@ -48,7 +48,7 @@ export function PlanningCalculatorDataPanel({ onAddCents }: { onAddCents: (cents
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [fx, cr] = await Promise.all([fetch(`${base}/fixed-expenses`), fetch(`${base}/credit-cards`)]);
+      const [fx, cr] = await Promise.all([authFetch(`${base}/fixed-expenses`), authFetch(`${base}/credit-cards`)]);
       if (cancelled) return;
       if (fx.ok) setFixedList((await fx.json()) as Fixed[]);
       if (cr.ok) {
@@ -66,7 +66,7 @@ export function PlanningCalculatorDataPanel({ onAddCents }: { onAddCents: (cents
     if (!stmtCardId) return;
     let cancelled = false;
     void (async () => {
-      const res = await fetch(`${base}/credit-cards/${stmtCardId}/statements`);
+      const res = await authFetch(`${base}/credit-cards/${stmtCardId}/statements`);
       if (cancelled || !res.ok) return;
       setStatementsForCard((await res.json()) as StatementRow[]);
     })();
@@ -112,7 +112,7 @@ export function PlanningCalculatorDataPanel({ onAddCents }: { onAddCents: (cents
       toast.error("Não há fatura para esse cartão e mês");
       return;
     }
-    const res = await fetch(`${base}/statements/${row.id}`);
+    const res = await authFetch(`${base}/statements/${row.id}`);
     if (!res.ok) {
       toast.error("Erro ao carregar fatura");
       return;
@@ -133,7 +133,7 @@ export function PlanningCalculatorDataPanel({ onAddCents }: { onAddCents: (cents
       return;
     }
     const month = allStmtMonth.trim();
-    const res = await fetch(`${base}/statements`);
+    const res = await authFetch(`${base}/statements`);
     if (!res.ok) {
       toast.error("Erro ao listar faturas");
       return;
@@ -146,7 +146,7 @@ export function PlanningCalculatorDataPanel({ onAddCents }: { onAddCents: (cents
     }
     const details = await Promise.all(
       ids.map(async (id) => {
-        const r = await fetch(`${base}/statements/${id}`);
+        const r = await authFetch(`${base}/statements/${id}`);
         if (!r.ok) return null;
         return (await r.json()) as StatementDetailJson;
       }),
