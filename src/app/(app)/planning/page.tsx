@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Download, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { PlanningCalculatorTab } from "@/components/planning/planning-calculator
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DataTable } from "@/components/shared/data-table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getApiBase, authFetch } from "@/lib/api";
+import { getApiBase, authFetch, downloadPdf } from "@/lib/api";
 import { currentCompetencyMonth, formatBRLFromCents } from "@/lib/money";
 import { MoneyValue } from "@/components/shared/money-value";
 import { CompetencyViewTip } from "@/components/shared/competency-view-tip";
@@ -76,6 +76,7 @@ export default function PlanningPage() {
 
   const [simAmount, setSimAmount] = useState("");
   const [simMode, setSimMode] = useState<"deduct_surplus" | "add_expense">("deduct_surplus");
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const load = useCallback(async () => {
     const base = getApiBase();
@@ -271,6 +272,21 @@ export default function PlanningPage() {
                   <TabsTrigger value="occurrence">Ocorrência</TabsTrigger>
                 </TabsList>
               </Tabs>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pdfLoading || loading}
+                onClick={() => {
+                  setPdfLoading(true);
+                  downloadPdf(
+                    `/reports/budget?competencyMonth=${encodeURIComponent(month)}&view=${view}`,
+                    `orcamento-${month}.pdf`,
+                  ).catch(() => toast.error("Falha ao gerar PDF")).finally(() => setPdfLoading(false));
+                }}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {pdfLoading ? "Gerando…" : "Exportar PDF"}
+              </Button>
             </div>
             <CompetencyViewTip />
           </div>
