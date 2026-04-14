@@ -83,6 +83,25 @@ export function getApiBase() {
   return BASE;
 }
 
+export async function downloadPdf(path: string, filename: string): Promise<void> {
+  const response = await fetch(`${BASE}${path}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    handleUnauthorized(response.status);
+    throw new ApiError("Falha ao gerar PDF", response.status);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export function authFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   const token = getToken();
