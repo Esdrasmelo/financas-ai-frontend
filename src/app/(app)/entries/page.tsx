@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Receipt, PieChart } from "lucide-react";
+import { Download, Plus, Receipt, PieChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { getApiBase, authFetch } from "@/lib/api";
+import { getApiBase, authFetch, downloadPdf } from "@/lib/api";
 import { formatBRLFromCents, currentCompetencyMonth } from "@/lib/money";
 import { formatDateDdMmYyyy, formatYmdInputToDdMmYyyy } from "@/lib/date";
 import { PageHeader } from "@/components/shared/page-header";
@@ -69,6 +69,7 @@ export default function EntriesPage() {
   const [paymentMethod, setPaymentMethod] = useState("pix");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   function openNewEntrySheet() {
     setEditingEntryId(null);
@@ -221,6 +222,21 @@ export default function EntriesPage() {
           <Button onClick={() => openNewEntrySheet()} className="gap-2">
             <Plus className="h-4 w-4" />
             Novo gasto
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pdfLoading}
+            onClick={() => {
+              setPdfLoading(true);
+              downloadPdf(
+                `/reports/entries?competencyMonth=${encodeURIComponent(month)}`,
+                `extrato-lancamentos-${month}.pdf`,
+              ).catch(() => toast.error("Falha ao gerar PDF")).finally(() => setPdfLoading(false));
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {pdfLoading ? "Gerando…" : "Exportar PDF"}
           </Button>
         </div>
       </PageHeader>

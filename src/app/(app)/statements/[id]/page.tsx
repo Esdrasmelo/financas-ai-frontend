@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getApiBase, authFetch } from "@/lib/api";
+import { getApiBase, authFetch, downloadPdf } from "@/lib/api";
 import { formatBRLFromCents } from "@/lib/money";
 import { formatDateDdMmYyyy, formatStatementRefDisplay } from "@/lib/date";
 import { PageHeader } from "@/components/shared/page-header";
@@ -61,6 +61,7 @@ type Detail = {
     totalInstallments: number;
     amountCents: number;
     purchaseDescription: string;
+    purchaseDate: string;
     status: string;
     categoryId: string;
     categoryName: string;
@@ -97,6 +98,7 @@ export default function StatementDetailPage() {
   const [modalEditingPurchaseId, setModalEditingPurchaseId] = useState<string | null>(null);
   const [deletePurchaseId, setDeletePurchaseId] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,17 +280,33 @@ export default function StatementDetailPage() {
             </Button>
           )}
         </div>
-        <Button
-          className="ml-auto"
-          type="button"
-          onClick={() => {
-            setModalEditingPurchaseId(null);
-            setPurchaseDialogOpen(true);
-          }}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Nova compra nesta fatura
-        </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pdfLoading || loading}
+            onClick={() => {
+              setPdfLoading(true);
+              downloadPdf(
+                `/reports/statement/${id}`,
+                `fatura-${data?.statement.referenceMonth ?? "detalhe"}.pdf`,
+              ).catch(() => toast.error("Falha ao gerar PDF")).finally(() => setPdfLoading(false));
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {pdfLoading ? "Gerando…" : "Baixar PDF"}
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              setModalEditingPurchaseId(null);
+              setPurchaseDialogOpen(true);
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Nova compra nesta fatura
+          </Button>
+        </div>
       </div>
 
       <Dialog
@@ -473,6 +491,7 @@ export default function StatementDetailPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Descrição</TableHead>
+                  <TableHead>Data da compra</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Parcela</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
@@ -484,6 +503,7 @@ export default function StatementDetailPage() {
                 {data.installments.map((installment) => (
                   <TableRow key={installment.id}>
                     <TableCell className="font-medium">{installment.purchaseDescription}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDateDdMmYyyy(installment.purchaseDate)}</TableCell>
                     <TableCell className="text-muted-foreground">{installment.categoryName}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">
