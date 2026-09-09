@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   CreditCard,
+  Download,
   Layers,
   PieChart as PieChartIcon,
   Receipt,
   Wallet,
   CalendarClock,
+  CalendarDays,
   ArrowRight,
   TrendingUp,
 } from "lucide-react";
@@ -27,10 +30,16 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CategoryDonutTooltip } from "@/components/dashboard/category-donut-tooltip";
 import { MonthlyTrendChart } from "@/components/dashboard/monthly-trend-chart";
-import { getApiBase, authFetch } from "@/lib/api";
+import {
+  EntriesAuditPanel,
+  CreditCardAuditPanel,
+  type EntryAuditRow,
+  type CreditCardAuditRow,
+} from "@/components/dashboard/kpi-audit-panel";
+import { getApiBase, authFetch, downloadPdf } from "@/lib/api";
 import { formatBRLFromCents, currentCompetencyMonth } from "@/lib/money";
 import { formatDateDdMmYyyy } from "@/lib/date";
-import { competencyMonthsEndingAt, daysInCompetencyMonth } from "@/lib/competency-month";
+import { daysInCompetencyMonth } from "@/lib/competency-month";
 import { getChartSeriesColors } from "@/lib/chart-theme";
 import { StatementStatusBadge, type StatementStatus } from "@/components/shared/status-badge";
 
@@ -40,21 +49,14 @@ type Kpis = {
   competencyMonth: string;
   view: string;
   totalSpentCents: number;
+  entriesTotalCents: number;
+  creditCardPortionCents: number;
+  statementsDueInMonthTotalCents: number;
   fixedExpensesCents: number;
   variableExpensesCents: number;
   previousMonthTotalCents: number;
   monthOverMonthDiffCents: number;
   monthOverMonthDiffPercent: number | null;
-  openStatementsPendingCents: number;
-  nextStatement: {
-    statementId: string;
-    creditCardName: string;
-    dueDate: string;
-    totalPendingCents: number;
-  } | null;
-  futureInstallmentsCents: number;
-  activeInstallmentPurchasesCount: number;
-  percentCommittedApprox: number | null;
 };
 
 type CatRow = { categoryId: string; categoryName: string; amountCents: number };
@@ -101,19 +103,45 @@ function monthShortLabel(ym: string) {
   return labelDate.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 }
 
-function aggregateTopCategories(rows: CatRow[], topN: number): { name: string; value: number }[] {
+/** Id reservado para a fatia que soma as categorias fora do Top N. */
+const OTHER_CATEGORIES_ID = "__other-categories__";
+
+type CategorySlice = { id: string; name: string; value: number };
+
+function aggregateTopCategories(rows: CatRow[], topN: number): CategorySlice[] {
   const sorted = [...rows].sort((a, b) => b.amountCents - a.amountCents);
   const head = sorted.slice(0, topN);
   const tail = sorted.slice(topN);
   const otherCents = tail.reduce((sum, row) => sum + row.amountCents, 0);
-  const out = head.map((row) => ({ name: row.categoryName, value: row.amountCents }));
-  if (otherCents > 0) out.push({ name: "Outros", value: otherCents });
-  return out;
+  const slices: CategorySlice[] = head.map((row) => ({
+    id: row.categoryId,
+    name: row.categoryName,
+    value: row.amountCents,
+  }));
+  if (otherCents > 0) {
+    // O usuário pode ter uma categoria própria chamada "Outros" — evita duas fatias com o mesmo rótulo.
+    const hasOwnOthersCategory = head.some((row) => row.categoryName.trim().toLowerCase() === "outros");
+    slices.push({
+      id: OTHER_CATEGORIES_ID,
+      name: hasOwnOthersCategory ? "Outras categorias" : "Outros",
+      value: otherCents,
+    });
+  }
+  return slices;
 }
 
 function statementStatus(s: string): StatementStatus {
   if (s === "open" || s === "closed" || s === "paid" || s === "overdue") return s;
   return "open";
+}
+
+/** Dias até o vencimento (meia-noite local); negativo = atrasado. */
+function daysUntilDueDate(isoDate: string): number {
+  const due = new Date(isoDate);
+  const today = new Date();
+  const startToday = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const startDue = Date.UTC(due.getFullYear(), due.getMonth(), due.getDate());
+  return Math.round((startDue - startToday) / 86400000);
 }
 
 export default function DashboardPage() {
@@ -128,19 +156,23 @@ export default function DashboardPage() {
   const [upcoming, setUpcoming] = useState<UpcomingStatement[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const [showEntriesPanel, setShowEntriesPanel] = useState(false);
+  const [entriesAuditRows, setEntriesAuditRows] = useState<EntryAuditRow[] | null>(null);
+  const [entriesAuditLoading, setEntriesAuditLoading] = useState(false);
+  const [showCcPanel, setShowCcPanel] = useState(false);
+  const [ccAuditRows, setCcAuditRows] = useState<CreditCardAuditRow[] | null>(null);
+  const [ccAuditLoading, setCcAuditLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const base = getApiBase();
     const dashboardQuery = new URLSearchParams({ competencyMonth: month, view });
-    const months = competencyMonthsEndingAt(month, 6);
 
     void (async () => {
       setLoading(true);
       try {
-        const trendUrls = months.map(
-          (monthKey) => `${base}/dashboard/monthly-summary?competencyMonth=${monthKey}&view=${view}`,
-        );
         const results = await Promise.all([
           authFetch(`${base}/dashboard/kpis?${dashboardQuery}`).then(async (response) => {
             if (!response.ok) throw new Error(await response.text());
@@ -154,12 +186,10 @@ export default function DashboardPage() {
             if (!response.ok) throw new Error(await response.text());
             return response.json() as Promise<MonthlySummary>;
           }),
-          ...trendUrls.map((url) =>
-            authFetch(url).then(async (response) => {
-              if (!response.ok) throw new Error(await response.text());
-              return response.json() as Promise<MonthlySummary>;
-            }),
-          ),
+          authFetch(`${base}/dashboard/monthly-evolution?view=${view}`).then(async (response) => {
+            if (!response.ok) throw new Error(await response.text());
+            return response.json() as Promise<MonthlySummary[]>;
+          }),
           authFetch(`${base}/dashboard/credit-cards-overview`).then(async (response) => {
             if (!response.ok) throw new Error(await response.text());
             return response.json() as Promise<CreditCardOverview[]>;
@@ -179,10 +209,10 @@ export default function DashboardPage() {
         const kpisPayload = results[0] as Kpis;
         const categoriesPayload = results[1] as CatRow[];
         const monthlyPayload = results[2] as MonthlySummary;
-        const trendOnly = results.slice(3, 9) as MonthlySummary[];
-        const creditCardsPayload = results[9] as CreditCardOverview[];
-        const commitmentsPayload = results[10] as FutureCommitments;
-        const upcomingStatementsPayload = results[11] as UpcomingStatement[];
+        const trendOnly = results[3] as MonthlySummary[];
+        const creditCardsPayload = results[4] as CreditCardOverview[];
+        const commitmentsPayload = results[5] as FutureCommitments;
+        const upcomingStatementsPayload = results[6] as UpcomingStatement[];
 
         if (cancelled) return;
         setKpis(kpisPayload);
@@ -210,6 +240,43 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [month, view]);
+
+  useEffect(() => {
+    setEntriesAuditRows(null);
+    setCcAuditRows(null);
+  }, [month, view]);
+
+  function handleEntriesMouseEnter() {
+    setShowEntriesPanel(true);
+    if (!entriesAuditRows && !entriesAuditLoading) {
+      const base = getApiBase();
+      setEntriesAuditLoading(true);
+      void authFetch(`${base}/dashboard/entries-breakdown?competencyMonth=${month}`)
+        .then(async (r) => {
+          if (!r.ok) return;
+          setEntriesAuditRows((await r.json()) as EntryAuditRow[]);
+        })
+        .catch(() => {})
+        .finally(() => setEntriesAuditLoading(false));
+    }
+  }
+
+  function handleCcMouseEnter() {
+    setShowCcPanel(true);
+    if (!ccAuditRows && !ccAuditLoading) {
+      const base = getApiBase();
+      setCcAuditLoading(true);
+      void authFetch(
+        `${base}/dashboard/credit-card-purchases-breakdown?competencyMonth=${month}&view=${view}`,
+      )
+        .then(async (r) => {
+          if (!r.ok) return;
+          setCcAuditRows((await r.json()) as CreditCardAuditRow[]);
+        })
+        .catch(() => {})
+        .finally(() => setCcAuditLoading(false));
+    }
+  }
 
   const chartData = useMemo(() => aggregateTopCategories(cats, TOP_CATEGORIES), [cats]);
   const chartTotalCents = useMemo(
@@ -260,6 +327,21 @@ export default function DashboardPage() {
               <TabsTrigger value="payment">Por pagamento</TabsTrigger>
             </TabsList>
           </Tabs>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pdfLoading || loading}
+            onClick={() => {
+              setPdfLoading(true);
+              downloadPdf(
+                `/reports/monthly?competencyMonth=${encodeURIComponent(month)}&view=${view}`,
+                `relatorio-mensal-${month}.pdf`,
+              ).catch(() => toast.error("Falha ao gerar PDF")).finally(() => setPdfLoading(false));
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {pdfLoading ? "Gerando…" : "Exportar PDF"}
+          </Button>
         </div>
         <CompetencyViewTip />
       </div>
@@ -290,43 +372,45 @@ export default function DashboardPage() {
                 value={<MoneyValue cents={kpis.totalSpentCents} className="text-[2rem]" />}
                 footer={momFooter}
               />
+              <div
+                className="relative cursor-help"
+                onMouseEnter={handleEntriesMouseEnter}
+                onMouseLeave={() => setShowEntriesPanel(false)}
+              >
+                <StatCard
+                  icon={Layers}
+                  label="Valor total lançamentos"
+                  value={<MoneyValue cents={kpis.entriesTotalCents} className="text-[2rem]" />}
+                  footer="Contas fixas + lançamentos variáveis na competência"
+                />
+                {showEntriesPanel && (
+                  <EntriesAuditPanel loading={entriesAuditLoading} rows={entriesAuditRows} />
+                )}
+              </div>
+              <div
+                className="relative cursor-help"
+                onMouseEnter={handleCcMouseEnter}
+                onMouseLeave={() => setShowCcPanel(false)}
+              >
+                <StatCard
+                  icon={CreditCard}
+                  label="Faturas na competência"
+                  value={<MoneyValue cents={kpis.creditCardPortionCents} className="text-[2rem]" />}
+                  footer={
+                    view === "occurrence"
+                      ? "Cartão: compras com data no mês (por ocorrência)"
+                      : "Cartão: parcelas com competência no mês (por pagamento)"
+                  }
+                />
+                {showCcPanel && (
+                  <CreditCardAuditPanel loading={ccAuditLoading} rows={ccAuditRows} view={view} />
+                )}
+              </div>
               <StatCard
-                icon={CreditCard}
-                label="Próxima fatura"
-                value={
-                  kpis.nextStatement ? (
-                    <MoneyValue cents={kpis.nextStatement.totalPendingCents} className="text-[2rem]" />
-                  ) : (
-                    "—"
-                  )
-                }
-                footer={
-                  kpis.nextStatement
-                    ? `${kpis.nextStatement.creditCardName} · vence ${formatDateDdMmYyyy(kpis.nextStatement.dueDate)}`
-                    : "Nenhuma pendência futura"
-                }
-              />
-              <StatCard
-                icon={Receipt}
-                label="Faturas em aberto"
-                value={<MoneyValue cents={kpis.openStatementsPendingCents} className="text-[2rem]" />}
-                footer="Total pendente em faturas não pagas"
-              />
-              <StatCard
-                icon={PieChartIcon}
-                label="Comprometido (aprox.)"
-                value={
-                  kpis.percentCommittedApprox != null ? (
-                    <span className="text-[2rem] font-bold tracking-tight">{kpis.percentCommittedApprox.toFixed(1)}%</span>
-                  ) : (
-                    "—"
-                  )
-                }
-                footer={
-                  commitments
-                    ? `${formatBRLFromCents(commitments.futureInstallmentsCents)} em parcelas futuras`
-                    : undefined
-                }
+                icon={CalendarDays}
+                label="Faturas no vencimento"
+                value={<MoneyValue cents={kpis.statementsDueInMonthTotalCents} className="text-[2rem]" />}
+                footer="Soma das faturas com vencimento neste mês (calendário)"
               />
             </div>
           </section>
@@ -338,13 +422,8 @@ export default function DashboardPage() {
               <StatCardCompact icon={Receipt} label="Gastos variáveis" value={<MoneyValue cents={kpis.variableExpensesCents} />} />
               <StatCardCompact
                 icon={Layers}
-                label="Parcelas futuras"
-                value={<MoneyValue cents={kpis.futureInstallmentsCents} />}
-              />
-              <StatCardCompact
-                icon={Layers}
                 label="Compras parceladas ativas"
-                value={kpis.activeInstallmentPurchasesCount}
+                value={commitments?.activeInstallmentPurchasesCount ?? "—"}
               />
               <StatCardCompact icon={TrendingUp} label="Média diária" value={<MoneyValue cents={dailyAvgCents} />} />
               <StatCardCompact
@@ -360,7 +439,7 @@ export default function DashboardPage() {
             <SectionCard
               className="lg:col-span-8"
               title="Evolução mensal"
-              description={`Total gasto nos últimos 6 meses (${viewLabel})`}
+              description={`Total estimado nos próximos 6 meses (${viewLabel})`}
               contentClassName="pt-0"
             >
               {trend.length > 0 ? (
@@ -411,27 +490,6 @@ export default function DashboardPage() {
                       )}
                     </span>
                   </li>
-                  <li className="flex justify-between gap-2 border-b border-border pb-3">
-                    <span className="text-muted-foreground">Próxima fatura</span>
-                    <span className="text-right font-medium text-foreground">
-                      {kpis.nextStatement ? (
-                        <>
-                          {formatBRLFromCents(kpis.nextStatement.totalPendingCents)}
-                          <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-                            {kpis.nextStatement.creditCardName}
-                          </span>
-                        </>
-                      ) : (
-                        "—"
-                      )}
-                    </span>
-                  </li>
-                  <li className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">Compromisso futuro (parcelas)</span>
-                    <span className="font-medium text-foreground">
-                      {commitments ? formatBRLFromCents(commitments.futureInstallmentsCents) : "—"}
-                    </span>
-                  </li>
                 </ul>
               </CardContent>
             </Card>
@@ -463,9 +521,9 @@ export default function DashboardPage() {
                           label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`}
                           labelLine={{ stroke: "var(--border-strong)", strokeWidth: 1 }}
                         >
-                          {chartData.map((_, i) => (
+                          {chartData.map((slice, i) => (
                             <Cell
-                              key={i}
+                              key={slice.id}
                               fill={getChartSeriesColors()[i % getChartSeriesColors().length]}
                               stroke="var(--card)"
                               strokeWidth={2}
@@ -482,19 +540,19 @@ export default function DashboardPage() {
                       Total: <MoneyValue cents={chartTotalCents} className="text-foreground" />
                     </p>
                     <ul className="space-y-2.5 text-sm">
-                      {chartData.map((d, i) => {
-                        const pct = chartTotalCents > 0 ? (d.value / chartTotalCents) * 100 : 0;
+                      {chartData.map((slice, i) => {
+                        const pct = chartTotalCents > 0 ? (slice.value / chartTotalCents) * 100 : 0;
                         return (
-                          <li key={d.name} className="flex items-start gap-2">
+                          <li key={slice.id} className="flex items-start gap-2">
                             <span
                               className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
                               style={{ backgroundColor: getChartSeriesColors()[i % getChartSeriesColors().length] }}
                               aria-hidden
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="font-medium text-foreground">{d.name}</span>
+                              <span className="font-medium text-foreground">{slice.name}</span>
                               <span className="mt-0.5 block text-muted-foreground">
-                                {formatBRLFromCents(d.value)}
+                                {formatBRLFromCents(slice.value)}
                                 <span className="text-muted-foreground/80"> · {pct.toFixed(1)}%</span>
                               </span>
                             </span>
@@ -520,23 +578,32 @@ export default function DashboardPage() {
                   <p className="text-sm text-muted-foreground">Nenhuma fatura futura pendente.</p>
                 ) : (
                   <ul className="space-y-3">
-                    {upcoming.map((upcomingStatement) => (
-                      <li
-                        key={upcomingStatement.statementId}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground">{upcomingStatement.creditCardName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Vence {formatDateDdMmYyyy(upcomingStatement.dueDate)}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <MoneyValue cents={upcomingStatement.totalPendingCents} className="text-sm" />
-                          <StatementStatusBadge status={statementStatus(upcomingStatement.status)} />
-                        </div>
-                      </li>
-                    ))}
+                    {upcoming.map((upcomingStatement) => {
+                      const daysLeft = daysUntilDueDate(upcomingStatement.dueDate);
+                      const urgent =
+                        daysLeft <= 7
+                          ? "border-amber-500/35 bg-amber-500/12 shadow-sm shadow-amber-500/10"
+                          : daysLeft <= 21
+                            ? "border-border bg-muted/50 ring-1 ring-amber-500/10"
+                            : "border-border bg-muted/30";
+                      return (
+                        <li
+                          key={upcomingStatement.statementId}
+                          className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm transition-colors ${urgent}`}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground">{upcomingStatement.creditCardName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Vence {formatDateDdMmYyyy(upcomingStatement.dueDate)}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <MoneyValue cents={upcomingStatement.totalPendingCents} className="text-sm" />
+                            <StatementStatusBadge status={statementStatus(upcomingStatement.status)} />
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </CardContent>

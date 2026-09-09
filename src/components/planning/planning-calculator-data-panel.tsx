@@ -232,7 +232,10 @@ export function PlanningCalculatorDataPanel({ onAddCents }: { onAddCents: (cents
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground">Todas as faturas de um mês</h3>
-        <p className="text-xs text-muted-foreground">Soma o valor cheio de cada fatura daquele mês em todos os cartões.</p>
+        <p className="text-xs text-muted-foreground">
+          Soma o valor cheio de cada fatura daquele mês de referência em todos os cartões ativos (ignora cartões
+          inativos).
+        </p>
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-2">
             <Label htmlFor="all-stmt-month">Mês (YYYY-MM)</Label>
