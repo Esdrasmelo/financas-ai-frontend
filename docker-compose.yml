@@ -1,0 +1,35 @@
+name: financas-ai-frontend
+
+services:
+  web:
+    build:
+      context: .
+      target: runner
+      args:
+        # Embutido no bundle em tempo de build — precisa ser a URL que o navegador
+        # do usuário alcança, não o hostname interno do Docker.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    container_name: financas-ai-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # Permite que código server-side alcance a API publicada no host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - financas
+
+networks:
+  # Rede criada pelo docker-compose do financas-ai-backend. Suba o backend antes,
+  # ou crie manualmente: docker network create financas-net
+  financas:
+    name: financas-net
+    external: true
