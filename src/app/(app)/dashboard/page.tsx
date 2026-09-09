@@ -103,14 +103,31 @@ function monthShortLabel(ym: string) {
   return labelDate.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 }
 
-function aggregateTopCategories(rows: CatRow[], topN: number): { name: string; value: number }[] {
+/** Id reservado para a fatia que soma as categorias fora do Top N. */
+const OTHER_CATEGORIES_ID = "__other-categories__";
+
+type CategorySlice = { id: string; name: string; value: number };
+
+function aggregateTopCategories(rows: CatRow[], topN: number): CategorySlice[] {
   const sorted = [...rows].sort((a, b) => b.amountCents - a.amountCents);
   const head = sorted.slice(0, topN);
   const tail = sorted.slice(topN);
   const otherCents = tail.reduce((sum, row) => sum + row.amountCents, 0);
-  const out = head.map((row) => ({ name: row.categoryName, value: row.amountCents }));
-  if (otherCents > 0) out.push({ name: "Outros", value: otherCents });
-  return out;
+  const slices: CategorySlice[] = head.map((row) => ({
+    id: row.categoryId,
+    name: row.categoryName,
+    value: row.amountCents,
+  }));
+  if (otherCents > 0) {
+    // O usuário pode ter uma categoria própria chamada "Outros" — evita duas fatias com o mesmo rótulo.
+    const hasOwnOthersCategory = head.some((row) => row.categoryName.trim().toLowerCase() === "outros");
+    slices.push({
+      id: OTHER_CATEGORIES_ID,
+      name: hasOwnOthersCategory ? "Outras categorias" : "Outros",
+      value: otherCents,
+    });
+  }
+  return slices;
 }
 
 function statementStatus(s: string): StatementStatus {
@@ -504,9 +521,9 @@ export default function DashboardPage() {
                           label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`}
                           labelLine={{ stroke: "var(--border-strong)", strokeWidth: 1 }}
                         >
-                          {chartData.map((_, i) => (
+                          {chartData.map((slice, i) => (
                             <Cell
-                              key={i}
+                              key={slice.id}
                               fill={getChartSeriesColors()[i % getChartSeriesColors().length]}
                               stroke="var(--card)"
                               strokeWidth={2}
@@ -523,19 +540,19 @@ export default function DashboardPage() {
                       Total: <MoneyValue cents={chartTotalCents} className="text-foreground" />
                     </p>
                     <ul className="space-y-2.5 text-sm">
-                      {chartData.map((d, i) => {
-                        const pct = chartTotalCents > 0 ? (d.value / chartTotalCents) * 100 : 0;
+                      {chartData.map((slice, i) => {
+                        const pct = chartTotalCents > 0 ? (slice.value / chartTotalCents) * 100 : 0;
                         return (
-                          <li key={d.name} className="flex items-start gap-2">
+                          <li key={slice.id} className="flex items-start gap-2">
                             <span
                               className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
                               style={{ backgroundColor: getChartSeriesColors()[i % getChartSeriesColors().length] }}
                               aria-hidden
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="font-medium text-foreground">{d.name}</span>
+                              <span className="font-medium text-foreground">{slice.name}</span>
                               <span className="mt-0.5 block text-muted-foreground">
-                                {formatBRLFromCents(d.value)}
+                                {formatBRLFromCents(slice.value)}
                                 <span className="text-muted-foreground/80"> · {pct.toFixed(1)}%</span>
                               </span>
                             </span>

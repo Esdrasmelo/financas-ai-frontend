@@ -11,7 +11,7 @@ import { FormAlert } from "@/components/shared/form-alert";
 import { friendlyError } from "@/lib/errors";
 import { getApiBase } from "@/lib/api";
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");
@@ -143,5 +143,15 @@ export default function ResetPasswordPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+// useSearchParams() exige uma suspense boundary: sem ela o prerender de
+// /reset-password falha no build de produção.
+export default function ResetPasswordPage() {
+  return (
+    <React.Suspense fallback={<div className="w-full max-w-[380px]" />}>
+      <ResetPasswordForm />
+    </React.Suspense>
   );
 }
