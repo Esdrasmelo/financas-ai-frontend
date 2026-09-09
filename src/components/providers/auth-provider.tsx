@@ -13,6 +13,7 @@ interface AuthUser {
   themeMode: string;
   themePrimary: string;
   themeAccent: string;
+  onboardingCompletedAt: string | null;
 }
 
 interface AuthContextValue {
@@ -71,8 +72,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new ApiError(body.message ?? friendlyError(new ApiError("", res.status)), res.status, body);
       }
       setToken(body.token);
-      setUser(body.user);
-      router.push("/home");
+      setUser(body.user as AuthUser);
+      const destination = (body.user as AuthUser).onboardingCompletedAt ? "/home" : "/onboarding";
+      router.push(destination);
     },
     [base, router],
   );
@@ -94,8 +96,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new ApiError(body.message ?? friendlyError(new ApiError("", res.status)), res.status, body);
       }
       setToken(body.token);
-      setUser(body.user);
-      router.push("/home");
+      setUser(body.user as AuthUser);
+      router.push("/onboarding");
     },
     [base, router],
   );

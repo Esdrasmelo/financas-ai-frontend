@@ -42,6 +42,33 @@ Interface web em **Next.js 16** (App Router), **React 19** e **Tailwind CSS 4** 
 
 ---
 
+## Docker
+
+```bash
+# 1. Suba o backend primeiro — ele cria a rede `financas-net`
+#    (ou crie manualmente: docker network create financas-net)
+# 2. Depois:
+docker compose up -d --build
+```
+
+A imagem usa o output `standalone` do Next (multi-stage, Node 24 slim) e serve em
+`http://localhost:3000`.
+
+| Variável                | Padrão                  | Uso                                       |
+| ----------------------- | ----------------------- | ----------------------------------------- |
+| `NEXT_PUBLIC_API_URL`   | `http://localhost:3001` | URL da API — **embutida em build time**   |
+| `WEB_PORT`              | `3000`                  | Porta publicada no host                   |
+
+Como `NEXT_PUBLIC_*` é embutido no bundle durante o build, o valor precisa ser a URL
+que o **navegador** alcança (`http://localhost:3001`), não o hostname interno do Docker.
+Ao mudar essa variável, refaça o build:
+
+```bash
+NEXT_PUBLIC_API_URL=https://api.exemplo.com docker compose up -d --build
+```
+
+---
+
 ## Scripts
 
 | Comando        | Descrição                 |

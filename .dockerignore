@@ -1,0 +1,31 @@
+node_modules
+.next
+out
+build
+coverage
+*.tsbuildinfo
+next-env.d.ts
+
+.git
+.gitignore
+.github
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.local.example
+
+# Configuracoes de editor
+.idea
+.vscode
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+.vercel
+
+# Documentacao e notas (nao entram no build)
+docs
+*.md
